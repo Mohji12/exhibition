@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     database_password: str = ""
     database_name: str = "exhibition"
     cors_origins: str = "http://localhost:8080,http://127.0.0.1:8080"
+    cors_origin_regex: str = r"https://.*\.vercel\.app"
 
     @property
     def cors_origin_list(self) -> list[str]:

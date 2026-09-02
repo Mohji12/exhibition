@@ -1,8 +1,8 @@
 import type { Appointment, Lead, TeamMember } from "@/lib/types";
 import type { SyncResult } from "@/lib/domain/sync";
 
-// Empty base URL uses the Vite dev proxy (/api → FastAPI on :8000).
-const API_BASE = import.meta.env.VITE_API_URL ?? "";
+// Calls the FastAPI backend (set via VITE_API_URL).
+const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 
 export type SeedData = {
   leads: Lead[];
