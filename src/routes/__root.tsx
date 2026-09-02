@@ -111,10 +111,10 @@ function RootShell({ children }: { children: ReactNode }) {
       </head>
       <body>
         {children}
-        {/* Strip screen-recorder extension nodes before React hydrates (e.g. Scrnli). */}
+        {/* Strip extension-injected DOM before React hydrates (password managers, recorders, etc.). */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){var r=function(){document.getElementById("scrnli_recorder_root")?.remove();document.querySelectorAll('[id$="_recorder_root"]').forEach(function(n){n.remove()})};r();if(typeof MutationObserver!=="undefined"){var o=new MutationObserver(r);o.observe(document.documentElement,{childList:true,subtree:true});window.addEventListener("load",function(){o.disconnect()},{once:true})}})();`,
+            __html: `(function(){var EXT_ATTRS=["fdprocessedid"];var strip=function(){document.querySelectorAll("[fdprocessedid]").forEach(function(el){EXT_ATTRS.forEach(function(a){el.removeAttribute(a)})});document.getElementById("scrnli_recorder_root")?.remove();document.querySelectorAll('[id$="_recorder_root"]').forEach(function(n){n.remove()})};strip();if(typeof MutationObserver!=="undefined"){var o=new MutationObserver(function(){strip()});o.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:EXT_ATTRS});window.addEventListener("load",function(){o.disconnect()},{once:true})}})();`,
           }}
         />
         <Scripts />
