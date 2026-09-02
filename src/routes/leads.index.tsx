@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { filterLeads } from "@/lib/domain/leads";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import type { Priority } from "@/lib/mock-data";
+import type { Priority } from "@/lib/types";
 
 export const Route = createFileRoute("/leads/")({
   head: () => ({

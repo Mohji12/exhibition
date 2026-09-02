@@ -26,7 +26,7 @@ export const Route = createFileRoute("/")({
 
 function LoginPage() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("ditto@conninter.example");
+  const [email, setEmail] = useState("");
   const [pin, setPin] = useState("");
 
   return (
@@ -82,10 +82,6 @@ function LoginPage() {
             Sign in
           </Button>
         </form>
-
-        <p className="mt-5 text-center text-[11px] text-muted-foreground">
-          Demo mockup · any credentials work
-        </p>
       </div>
     </div>
   );

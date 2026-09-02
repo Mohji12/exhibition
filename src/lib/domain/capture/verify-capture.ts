@@ -1,5 +1,5 @@
 import { findDuplicateLead, normalizeMobile } from "@/lib/domain/leads";
-import type { Lead } from "@/lib/mock-data";
+import type { Lead } from "@/lib/types";
 
 export type FieldStatus = "ok" | "warning" | "error";
 

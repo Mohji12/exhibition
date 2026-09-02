@@ -1,6 +1,6 @@
 import { AlertCircle, CheckCircle2, AlertTriangle } from "lucide-react";
 import type { CaptureVerification, FieldStatus } from "@/lib/domain/capture/verify-capture";
-import type { Lead } from "@/lib/mock-data";
+import type { Lead } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const STATUS_ICON: Record<FieldStatus, typeof CheckCircle2> = {

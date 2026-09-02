@@ -1,4 +1,4 @@
-import type { Lead } from "@/lib/mock-data";
+import type { Lead } from "@/lib/types";
 
 export const PENDING_STORAGE_KEY = "conninter:pending";
 

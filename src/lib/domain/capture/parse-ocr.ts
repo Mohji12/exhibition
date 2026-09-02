@@ -1,4 +1,4 @@
-import type { Lead } from "@/lib/mock-data";
+import type { Lead } from "@/lib/types";
 import { hasMeaningfulQrData, type ParseResult } from "@/lib/domain/capture/parse-qr";
 
 const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;

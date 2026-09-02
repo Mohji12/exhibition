@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Appointment, Lead } from "@/lib/mock-data";
+import type { Appointment, Lead } from "@/lib/types";
 
 export const leadSchema = z.object({
   id: z.string().min(1),

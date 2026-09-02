@@ -1,4 +1,4 @@
-import type { Appointment, Lead } from "@/lib/mock-data";
+import type { Appointment, Lead } from "@/lib/types";
 
 export type CaptureStats = {
   captured: number;

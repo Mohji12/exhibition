@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import type { Priority } from "@/lib/mock-data";
+import type { Priority } from "@/lib/types";
 
 export const PRIORITY_META: Record<Priority, { label: string; dot: string; chip: string }> = {
   hot: { label: "Hot", dot: "bg-hot", chip: "bg-hot-soft text-hot" },

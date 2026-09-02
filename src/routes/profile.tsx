@@ -66,8 +66,8 @@ function ProfilePage() {
           {seedSource === "loading" && "Loading data from FastAPI backend…"}
           {seedSource === "api" &&
             "Connected to FastAPI backend. Saves sync to the exhibition database automatically."}
-          {seedSource === "mock" &&
-            "Using built-in mock data — FastAPI backend unavailable or not running."}
+          {seedSource === "error" &&
+            "Could not reach the FastAPI backend. Start the backend and check VITE_API_URL."}
         </p>
         {lastSyncError ? (
           <p className="mt-2 text-xs text-destructive">Last sync issue: {lastSyncError}</p>

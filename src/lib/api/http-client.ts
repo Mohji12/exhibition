@@ -1,4 +1,4 @@
-import type { Appointment, Lead, TeamMember } from "@/lib/mock-data";
+import type { Appointment, Lead, TeamMember } from "@/lib/types";
 import type { SyncResult } from "@/lib/domain/sync";
 
 // Empty base URL uses the Vite dev proxy (/api → FastAPI on :8000).

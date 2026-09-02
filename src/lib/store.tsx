@@ -27,17 +27,9 @@ import {
   upsertPendingLead,
   type PendingQueue,
 } from "@/lib/domain/sync";
-import {
-  INITIAL_APPOINTMENTS,
-  INITIAL_LEADS,
-  PRODUCT_INTERESTS,
-  TEAM,
-  type Appointment,
-  type Lead,
-  type TeamMember,
-} from "./mock-data";
+import type { Appointment, Lead, TeamMember } from "./types";
 
-export type SeedSource = "api" | "mock" | "loading";
+export type SeedSource = "api" | "error" | "loading";
 
 type StoreValue = {
   leads: Lead[];
@@ -62,10 +54,10 @@ function persistQueue(queue: PendingQueue) {
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [leads, setLeads] = useState<Lead[]>(INITIAL_LEADS);
-  const [appointments, setAppointments] = useState<Appointment[]>(INITIAL_APPOINTMENTS);
-  const [interests, setInterests] = useState<string[]>(PRODUCT_INTERESTS);
-  const [team, setTeam] = useState<TeamMember[]>(TEAM);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [interests, setInterests] = useState<string[]>([]);
+  const [team, setTeam] = useState<TeamMember[]>([]);
   const [seedSource, setSeedSource] = useState<SeedSource>("loading");
   const [syncing, setSyncing] = useState(false);
   const [lastSyncError, setLastSyncError] = useState<string | undefined>();
@@ -94,18 +86,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setSeedSource("api");
         } else {
           const pending = pendingRef.current;
+          setAppointments([]);
+          setInterests([]);
+          setTeam([]);
           if (pending.leads.length) {
-            setLeads((prev) => {
-              let next = prev;
-              for (const p of pending.leads) next = mergeLead(next, p);
-              return next;
-            });
+            setLeads(pending.leads);
+          } else {
+            setLeads([]);
           }
-          setSeedSource("mock");
+          setSeedSource("error");
+          setLastSyncError("Could not load data from the backend");
         }
       })
       .catch(() => {
-        if (!cancelled) setSeedSource("mock");
+        if (!cancelled) {
+          setLeads(pendingRef.current.leads);
+          setAppointments([]);
+          setInterests([]);
+          setTeam([]);
+          setSeedSource("error");
+          setLastSyncError("Could not connect to the backend");
+        }
       });
 
     return () => {

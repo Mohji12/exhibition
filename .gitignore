@@ -12,7 +12,7 @@ __pycache__/
 *.py[cod]
 test-results/
 .lovable/
-.vercel/output
+.vercel/
 .wrangler/
 
 dist

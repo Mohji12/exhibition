@@ -1,4 +1,4 @@
-import type { Lead, Priority } from "@/lib/mock-data";
+import type { Lead, Priority } from "@/lib/types";
 
 export type LeadFilter = {
   query?: string;
@@ -45,25 +45,6 @@ export function findDuplicateLead(leads: Lead[], candidate: Lead): Lead | undefi
   );
 }
 
-export function createBlankLead(id?: string): Lead {
-  return {
-    id: id ?? `l${Date.now()}`,
-    name: "Dr. Kavita Menon",
-    company: "Apex Multispeciality Hospital",
-    designation: "Head of Biomedical Engineering",
-    mobile: "+91 98200 55110",
-    email: "kavita.menon@apexhospital.example",
-    city: "Bengaluru",
-    priority: "warm",
-    interests: ["Medical Equipment"],
-    summary: "",
-    synced: false,
-    capturedAt: "Just now",
-    consentAt: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
-    captureSource: "manual",
-  };
-}
-
 export function createEmptyLead(id?: string): Lead {
   return {
     id: id ?? `l${Date.now()}`,
@@ -87,11 +68,11 @@ export function resolveLeadForRoute(
   leads: Lead[],
 ): { lead: Lead; isNew: boolean } {
   if (leadId === "new") {
-    return { lead: createBlankLead(), isNew: true };
+    return { lead: createEmptyLead(), isNew: true };
   }
   const existing = leads.find((l) => l.id === leadId);
   if (existing) return { lead: existing, isNew: false };
-  return { lead: createBlankLead(leadId), isNew: true };
+  return { lead: createEmptyLead(leadId), isNew: true };
 }
 
 export function mergeSeedWithPending(serverLeads: Lead[], pendingLeads: Lead[]): Lead[] {

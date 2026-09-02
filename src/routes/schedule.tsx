@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { useStore } from "@/lib/store";
 import { formatValidationErrors, validateAppointment } from "@/lib/domain/validation";
-import type { Appointment } from "@/lib/mock-data";
+import type { Appointment } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/schedule")({

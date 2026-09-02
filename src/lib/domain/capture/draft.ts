@@ -1,4 +1,4 @@
-import type { CaptureMeta, CaptureSource, Lead } from "@/lib/mock-data";
+import type { CaptureMeta, CaptureSource, Lead } from "@/lib/types";
 
 export const DRAFT_LEAD_KEY = "conninter:draft-lead";
 

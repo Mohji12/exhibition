@@ -29,7 +29,7 @@ import {
 } from "@/lib/domain/leads";
 import { formatValidationErrors, validateLead } from "@/lib/domain/validation";
 import { useStore } from "@/lib/store";
-import type { CaptureSource, Lead, Priority } from "@/lib/mock-data";
+import type { CaptureSource, Lead, Priority } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const searchSchema = z.object({
