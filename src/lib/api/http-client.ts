@@ -1,8 +1,13 @@
 import type { Appointment, Lead, TeamMember } from "@/lib/types";
 import type { SyncResult } from "@/lib/domain/sync";
 
-// Calls the FastAPI backend (set via VITE_API_URL).
-const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+const DEFAULT_API_URL = "https://connitor.menteetracker.com";
+
+export function getApiBase(): string {
+  const configured = import.meta.env.VITE_API_URL?.trim();
+  const base = configured || DEFAULT_API_URL;
+  return base.replace(/\/$/, "");
+}
 
 export type SeedData = {
   leads: Lead[];
@@ -20,7 +25,7 @@ export type UpsertAppointmentResponse =
 export type ManageInterestResponse = { ok: true } | { ok: false; error: string };
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${getApiBase()}${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", ...init?.headers },
   });

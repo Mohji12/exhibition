@@ -12,6 +12,7 @@ export default defineConfig(({ mode, command }) => {
     envDefine[`import.meta.env.${key}`] = JSON.stringify(value);
   }
   const apiTarget = env.VITE_API_URL || "http://localhost:8000";
+  const useLocalProxy = !env.VITE_API_URL;
 
   const plugins = [
     tailwindcss(),
@@ -43,10 +44,14 @@ export default defineConfig(({ mode, command }) => {
     server: {
       host: "::",
       port: 8080,
-      proxy: {
-        "/api": { target: apiTarget, changeOrigin: true },
-        "/health": { target: apiTarget, changeOrigin: true },
-      },
+      ...(useLocalProxy
+        ? {
+            proxy: {
+              "/api": { target: apiTarget, changeOrigin: true },
+              "/health": { target: apiTarget, changeOrigin: true },
+            },
+          }
+        : {}),
     },
     resolve: {
       alias: { "@": `${process.cwd()}/src` },
