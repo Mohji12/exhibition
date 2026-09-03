@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 const NAV = [
   { to: "/admin", label: "Overview", icon: LayoutDashboard, exact: true },
   { to: "/admin/invite", label: "Invite", icon: QrCode, exact: false },
-  { to: "/admin/staff", label: "Staff", icon: Users, exact: false },
+  { to: "/admin/clients", label: "Exhibitors", icon: Users, exact: false },
   { to: "/admin/leads", label: "Leads", icon: LayoutList, exact: false },
   { to: "/admin/report", label: "Report", icon: FileChartColumn, exact: false },
   { to: "/admin/followups", label: "Follow-ups", icon: CalendarClock, exact: false },

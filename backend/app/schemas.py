@@ -231,6 +231,9 @@ class BoothReportResponse(CamelModel):
 class PatchUserRequest(CamelModel):
     status: AccountStatus | None = None
     role: TeamRole | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    email: EmailStr | None = None
+    login_pin: Pin4 | None = None
 
 
 class PatchAppointmentRequest(CamelModel):

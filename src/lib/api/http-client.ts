@@ -124,11 +124,27 @@ export async function fetchAdminUsers(): Promise<AuthUser[]> {
 
 export async function patchAdminUser(
   userId: string,
-  body: { status?: AuthUser["status"]; role?: AuthUser["role"] },
+  body: {
+    status?: AuthUser["status"];
+    role?: AuthUser["role"];
+    name?: string;
+    email?: string;
+    loginPin?: string;
+  },
 ): Promise<AuthUser> {
   return apiFetch<AuthUser>(`/api/admin/users/${encodeURIComponent(userId)}`, {
     method: "PATCH",
     body: JSON.stringify(body),
+  });
+}
+
+export async function fetchAdminUser(userId: string): Promise<AuthUser> {
+  return apiFetch<AuthUser>(`/api/admin/users/${encodeURIComponent(userId)}`);
+}
+
+export async function deleteAdminUser(userId: string): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>(`/api/admin/users/${encodeURIComponent(userId)}`, {
+    method: "DELETE",
   });
 }
 

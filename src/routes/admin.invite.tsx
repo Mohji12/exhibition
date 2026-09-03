@@ -76,13 +76,13 @@ function InvitePage() {
     <div className="mx-auto flex min-h-[70vh] max-w-xl flex-col items-center text-center">
       <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Conninter</p>
       <h1 className="mt-2 text-4xl font-semibold tracking-tight text-foreground">CONNINTER</h1>
-      <p className="mt-2 text-sm text-muted-foreground">Scan to create a booth account</p>
+      <p className="mt-2 text-sm text-muted-foreground">Scan to register as an exhibitor</p>
 
       <div className="mt-8 w-full overflow-hidden rounded-3xl bg-card shadow-float">
         {qr ? (
           <img
             src={qr}
-            alt="Staff invite QR code"
+            alt="Exhibitor invite QR code"
             className="aspect-square w-full animate-in fade-in duration-500"
           />
         ) : (

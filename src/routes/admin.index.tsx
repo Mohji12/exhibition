@@ -39,7 +39,8 @@ function AdminOverviewPage() {
       <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Conninter</p>
       <h1 className="mt-1 text-3xl font-semibold tracking-tight text-foreground">Booth today</h1>
       <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-        Staff, lead quality, capture sources and follow-ups for MEDICON 2026.
+        Staff, lead quality, capture sources and follow-ups for MEDICON 2026. QR invite creates
+        exhibitors; each exhibitor only sees their own visitor leads.
       </p>
 
       {error ? <p className="mt-6 text-sm text-destructive">{error}</p> : null}
@@ -104,7 +105,7 @@ function AdminOverviewPage() {
         </Link>
         {" · "}
         <Link to="/admin/invite" className="font-medium text-primary underline-offset-4 hover:underline">
-          Invite staff
+          Invite exhibitors
         </Link>
       </p>
     </div>

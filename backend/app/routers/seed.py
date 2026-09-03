@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 from app.database import get_connection
 from app.mappers import LEAD_SELECT_SQL, map_appointment_row, map_lead_row, map_team_row
 from app.schemas import SeedData
-from app.security import require_user
+from app.security import CurrentUser, require_user
 
 logger = logging.getLogger(__name__)
 
@@ -13,27 +13,54 @@ router = APIRouter(prefix="/api", tags=["seed"], dependencies=[Depends(require_u
 
 
 @router.get("/seed", response_model=SeedData | None)
-def fetch_seed_data() -> SeedData | None:
+def fetch_seed_data(user: CurrentUser = Depends(require_user)) -> SeedData | None:
     try:
         with get_connection() as conn, conn.cursor() as cur:
             cur.execute("SELECT name FROM product_interests ORDER BY id")
             interests = [row["name"] for row in cur.fetchall()]
 
-            cur.execute(f"{LEAD_SELECT_SQL} ORDER BY l.captured_at DESC")
+            if user.role == "Admin":
+                cur.execute(f"{LEAD_SELECT_SQL} ORDER BY l.captured_at DESC")
+            else:
+                cur.execute(
+                    f"{LEAD_SELECT_SQL} HAVING l.captured_by = %s ORDER BY l.captured_at DESC",
+                    (user.id,),
+                )
             leads = [map_lead_row(row) for row in cur.fetchall()]
 
-            cur.execute(
-                "SELECT id, lead_name, type, when_label, status FROM appointments ORDER BY id"
-            )
-            appointments = [map_appointment_row(row) for row in cur.fetchall()]
+            appointments = []
+            if user.role == "Admin":
+                cur.execute(
+                    "SELECT id, lead_name, type, when_label, status FROM appointments ORDER BY id"
+                )
+                appointments = [map_appointment_row(row) for row in cur.fetchall()]
+            elif leads:
+                names = [lead.name for lead in leads]
+                ph = ",".join(["%s"] * len(names))
+                cur.execute(
+                    "SELECT id, lead_name, type, when_label, status FROM appointments "
+                    f"WHERE lead_name IN ({ph}) ORDER BY id",
+                    names,
+                )
+                appointments = [map_appointment_row(row) for row in cur.fetchall()]
 
-            cur.execute(
-                """
-                SELECT name, role, email FROM users
-                WHERE status = 'active'
-                ORDER BY created_at
-                """
-            )
+            if user.role == "Admin":
+                cur.execute(
+                    """
+                    SELECT name, role, email FROM users
+                    WHERE status = 'active'
+                    ORDER BY created_at
+                    """
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT name, role, email FROM users
+                    WHERE status = 'active' AND (id = %s OR role = 'Admin')
+                    ORDER BY created_at
+                    """,
+                    (user.id,),
+                )
             team = [map_team_row(row) for row in cur.fetchall()]
 
         return SeedData(

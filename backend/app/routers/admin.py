@@ -56,6 +56,20 @@ def _user_out(row: dict) -> AuthUserOut:
     )
 
 
+_USER_WITH_COUNTS_SQL = """
+            SELECT
+              u.id, u.name, u.email, u.role, u.status, u.created_at, u.activated_at,
+              COUNT(l.id) AS leads_captured
+            FROM users u
+            LEFT JOIN leads l ON l.captured_by = u.id
+"""
+
+
+def _get_user_row(cur, user_id: str) -> dict | None:
+    cur.execute(f"{_USER_WITH_COUNTS_SQL} WHERE u.id = %s GROUP BY u.id", (user_id,))
+    return cur.fetchone()
+
+
 def _latest_invite(cur, admin_id: str) -> dict | None:
     cur.execute(
         """
@@ -293,7 +307,13 @@ def patch_user(
     body: PatchUserRequest,
     admin: Annotated[CurrentUser, Depends(require_admin)],
 ) -> AuthUserOut:
-    if body.status is None and body.role is None:
+    if (
+        body.status is None
+        and body.role is None
+        and body.name is None
+        and body.email is None
+        and body.login_pin is None
+    ):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nothing to update")
 
     with get_connection() as conn, conn.cursor() as cur:
@@ -307,6 +327,8 @@ def patch_user(
 
         new_status = body.status or row["status"]
         new_role = body.role or row["role"]
+        new_name = body.name.strip() if body.name else row["name"]
+        new_email = str(body.email).strip().lower() if body.email else row["email"]
 
         if user_id == admin.id and (new_status == "disabled" or new_role != "Admin"):
             raise HTTPException(
@@ -326,26 +348,79 @@ def patch_user(
                     detail="At least one active admin is required",
                 )
 
-        cur.execute(
-            "UPDATE users SET status = %s, role = %s WHERE id = %s",
-            (new_status, new_role, user_id),
-        )
+        if new_email != row["email"]:
+            cur.execute("SELECT id FROM users WHERE email = %s AND id <> %s", (new_email, user_id))
+            if cur.fetchone():
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already in use")
+
+        sets = ["status = %s", "role = %s", "name = %s", "email = %s"]
+        params: list = [new_status, new_role, new_name, new_email]
+        if body.login_pin:
+            sets.append("pin_hash = %s")
+            params.append(hash_pin(body.login_pin))
+        params.append(user_id)
+        cur.execute(f"UPDATE users SET {', '.join(sets)} WHERE id = %s", params)
         conn.commit()
-        cur.execute(
-            """
-            SELECT
-              u.id, u.name, u.email, u.role, u.status, u.created_at, u.activated_at,
-              COUNT(l.id) AS leads_captured
-            FROM users u
-            LEFT JOIN leads l ON l.captured_by = u.id
-            WHERE u.id = %s
-            GROUP BY u.id
-            """,
-            (user_id,),
-        )
-        updated = cur.fetchone()
+        updated = _get_user_row(cur, user_id)
 
     return _user_out(updated)
+
+
+@router.get("/users/{user_id}", response_model=AuthUserOut)
+def get_user(user_id: str) -> AuthUserOut:
+    with get_connection() as conn, conn.cursor() as cur:
+        row = _get_user_row(cur, user_id)
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return _user_out(row)
+
+
+@router.delete("/users/{user_id}")
+def delete_user(
+    user_id: str,
+    admin: Annotated[CurrentUser, Depends(require_admin)],
+) -> dict[str, bool]:
+    if user_id == admin.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot delete your own admin account",
+        )
+    with get_connection() as conn, conn.cursor() as cur:
+        cur.execute("SELECT id, role, status FROM users WHERE id = %s", (user_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        if row["role"] == "Admin" and row["status"] == "active":
+            cur.execute(
+                "SELECT COUNT(*) AS c FROM users WHERE role = 'Admin' AND status = 'active' AND id <> %s",
+                (user_id,),
+            )
+            if int(cur.fetchone()["c"]) < 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="At least one active admin is required",
+                )
+        cur.execute("SELECT id, name FROM leads WHERE captured_by = %s", (user_id,))
+        leads = cur.fetchall()
+        lead_ids = [item["id"] for item in leads]
+        lead_names = [item["name"] for item in leads]
+        if lead_ids:
+            ph = ",".join(["%s"] * len(lead_ids))
+            cur.execute(f"DELETE FROM lead_interests WHERE lead_id IN ({ph})", lead_ids)
+            cur.execute(
+                "SELECT COUNT(*) AS c FROM information_schema.TABLES "
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lead_card_images'"
+            )
+            if int(cur.fetchone()["c"]) > 0:
+                cur.execute(f"DELETE FROM lead_card_images WHERE lead_id IN ({ph})", lead_ids)
+            cur.execute(f"DELETE FROM leads WHERE id IN ({ph})", lead_ids)
+        if lead_names:
+            name_ph = ",".join(["%s"] * len(lead_names))
+            cur.execute(f"DELETE FROM appointments WHERE lead_name IN ({name_ph})", lead_names)
+        cur.execute("DELETE FROM invites WHERE created_by = %s", (user_id,))
+        cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+        conn.commit()
+    return {"ok": True}
 
 
 @router.get("/leads/export")

@@ -23,6 +23,8 @@ import { Route as AdminInviteRouteImport } from './routes/admin.invite'
 import { Route as AdminLeadsRouteImport } from './routes/admin.leads'
 import { Route as AdminReportRouteImport } from './routes/admin.report'
 import { Route as AdminStaffRouteImport } from './routes/admin.staff'
+import { Route as AdminClientsRouteImport } from './routes/admin.clients'
+import { Route as AdminClientsUserIdRouteImport } from './routes/admin.clients.$userId'
 import { Route as CaptureIndexRouteImport } from './routes/capture.index'
 import { Route as CaptureCardRouteImport } from './routes/capture.card'
 import { Route as CaptureQrRouteImport } from './routes/capture.qr'
@@ -99,6 +101,16 @@ const AdminStaffRoute = AdminStaffRouteImport.update({
   path: '/staff',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminClientsRoute = AdminClientsRouteImport.update({
+  id: '/clients',
+  path: '/clients',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminClientsUserIdRoute = AdminClientsUserIdRouteImport.update({
+  id: '/clients/$userId',
+  path: '/clients/$userId',
+  getParentRoute: () => AdminRoute,
+} as any)
 const CaptureIndexRoute = CaptureIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -139,6 +151,8 @@ export interface FileRoutesByFullPath {
   '/admin/leads': typeof AdminLeadsRoute
   '/admin/report': typeof AdminReportRoute
   '/admin/staff': typeof AdminStaffRoute
+  '/admin/clients': typeof AdminClientsRoute
+  '/admin/clients/$userId': typeof AdminClientsUserIdRoute
   '/capture/card': typeof CaptureCardRoute
   '/capture/qr': typeof CaptureQrRoute
   '/leads/$leadId': typeof LeadsLeadIdRoute
@@ -158,6 +172,8 @@ export interface FileRoutesByTo {
   '/admin/leads': typeof AdminLeadsRoute
   '/admin/report': typeof AdminReportRoute
   '/admin/staff': typeof AdminStaffRoute
+  '/admin/clients': typeof AdminClientsRoute
+  '/admin/clients/$userId': typeof AdminClientsUserIdRoute
   '/capture/card': typeof CaptureCardRoute
   '/capture/qr': typeof CaptureQrRoute
   '/leads/$leadId': typeof LeadsLeadIdRoute
@@ -180,6 +196,8 @@ export interface FileRoutesById {
   '/admin/leads': typeof AdminLeadsRoute
   '/admin/report': typeof AdminReportRoute
   '/admin/staff': typeof AdminStaffRoute
+  '/admin/clients': typeof AdminClientsRoute
+  '/admin/clients/$userId': typeof AdminClientsUserIdRoute
   '/capture/card': typeof CaptureCardRoute
   '/capture/qr': typeof CaptureQrRoute
   '/leads/$leadId': typeof LeadsLeadIdRoute
@@ -203,6 +221,8 @@ export interface FileRouteTypes {
     | '/admin/leads'
     | '/admin/report'
     | '/admin/staff'
+    | '/admin/clients'
+    | '/admin/clients/$userId'
     | '/capture/card'
     | '/capture/qr'
     | '/leads/$leadId'
@@ -222,6 +242,8 @@ export interface FileRouteTypes {
     | '/admin/leads'
     | '/admin/report'
     | '/admin/staff'
+    | '/admin/clients'
+    | '/admin/clients/$userId'
     | '/capture/card'
     | '/capture/qr'
     | '/leads/$leadId'
@@ -243,6 +265,8 @@ export interface FileRouteTypes {
     | '/admin/leads'
     | '/admin/report'
     | '/admin/staff'
+    | '/admin/clients'
+    | '/admin/clients/$userId'
     | '/capture/card'
     | '/capture/qr'
     | '/leads/$leadId'
@@ -363,6 +387,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminStaffRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/clients': {
+      id: '/admin/clients'
+      path: '/clients'
+      fullPath: '/admin/clients'
+      preLoaderRoute: typeof AdminClientsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/clients/$userId': {
+      id: '/admin/clients/$userId'
+      path: '/clients/$userId'
+      fullPath: '/admin/clients/$userId'
+      preLoaderRoute: typeof AdminClientsUserIdRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/capture/': {
       id: '/capture/'
       path: '/'
@@ -408,6 +446,8 @@ interface AdminRouteChildren {
   AdminLeadsRoute: typeof AdminLeadsRoute
   AdminReportRoute: typeof AdminReportRoute
   AdminStaffRoute: typeof AdminStaffRoute
+  AdminClientsRoute: typeof AdminClientsRoute
+  AdminClientsUserIdRoute: typeof AdminClientsUserIdRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
@@ -418,6 +458,8 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminLeadsRoute: AdminLeadsRoute,
   AdminReportRoute: AdminReportRoute,
   AdminStaffRoute: AdminStaffRoute,
+  AdminClientsRoute: AdminClientsRoute,
+  AdminClientsUserIdRoute: AdminClientsUserIdRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 

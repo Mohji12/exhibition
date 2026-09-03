@@ -18,7 +18,7 @@ export const Route = createFileRoute("/join")({
       { title: "Activate account — Conninter Visitor Book" },
       {
         name: "description",
-        content: "Activate your Conninter booth account with the PIN shown on the admin dashboard.",
+        content: "Activate your exhibitor account with the PIN shown next to the admin QR.",
       },
     ],
   }),
@@ -68,7 +68,7 @@ function JoinPage() {
           </div>
           <div>
             <p className="text-lg font-semibold tracking-tight text-foreground">CONNINTER</p>
-            <p className="text-xs text-muted-foreground">Activate booth account</p>
+            <p className="text-xs text-muted-foreground">Activate exhibitor account</p>
           </div>
         </div>
 
