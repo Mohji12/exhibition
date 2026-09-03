@@ -1,14 +1,13 @@
 [Unit]
-Description=Conninter Visitor Book API
+Description=Exhibition FastAPI Application
 After=network.target
 
 [Service]
-Type=simple
 User=ubuntu
 Group=ubuntu
-WorkingDirectory=/home/ubuntu/conninter-exhibition/backend
-Environment=PATH=/home/ubuntu/conninter-exhibition/backend/.venv/bin
-ExecStart=/home/ubuntu/conninter-exhibition/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+WorkingDirectory=/home/ubuntu/exhibition/backend
+Environment="PATH=/home/ubuntu/exhibition/backend/exhibition/bin"
+ExecStart=/home/ubuntu/exhibition/backend/exhibition/bin/uvicorn app.main:app --host 127.0.0.1 --port 8002
 Restart=always
 RestartSec=5
 

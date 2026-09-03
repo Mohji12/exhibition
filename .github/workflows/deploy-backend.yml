@@ -2,7 +2,7 @@ name: Deploy backend
 
 on:
   push:
-    branches: [main]
+    branches: [main, update-from-local]
     paths:
       - "backend/**"
       - ".github/workflows/deploy-backend.yml"
@@ -22,11 +22,11 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
           source: "backend/"
-          target: "/home/ubuntu/conninter-exhibition"
+          target: "/tmp/exhibition-backend-upload"
           overwrite: true
           strip_components: 0
 
-      - name: Restart API
+      - name: Sync and restart API
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -34,5 +34,17 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
           script: |
-            chmod +x /home/ubuntu/conninter-exhibition/backend/deploy/deploy.sh
-            /home/ubuntu/conninter-exhibition/backend/deploy/deploy.sh
+            set -euo pipefail
+            DEST=/home/ubuntu/exhibition/backend
+            SRC=/tmp/exhibition-backend-upload/backend
+            mkdir -p "$DEST"
+            rsync -a --delete \
+              --exclude '.env' \
+              --exclude 'exhibition/' \
+              --exclude '__pycache__/' \
+              --exclude '*.pyc' \
+              "$SRC/" "$DEST/"
+            sed -i 's/\r$//' "$DEST/deploy/deploy.sh"
+            chmod +x "$DEST/deploy/deploy.sh"
+            "$DEST/deploy/deploy.sh"
+            rm -rf /tmp/exhibition-backend-upload
