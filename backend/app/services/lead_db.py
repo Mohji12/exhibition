@@ -1,5 +1,4 @@
 import json
-from typing import Any
 
 import pymysql
 
@@ -11,23 +10,36 @@ def upsert_lead_in_db(
     conn: pymysql.connections.Connection,
     lead: Lead,
     mark_synced: bool = True,
+    capturer_id: str | None = None,
 ) -> UpsertLeadResponse:
     try:
         conn.begin()
+        # Fold fieldConfidence into capture_meta for durable storage
+        capture_meta = lead.capture_meta
+        if lead.field_confidence:
+            from app.schemas import CaptureMeta
+
+            base = capture_meta.model_dump() if capture_meta else {}
+            if not base.get("field_confidence"):
+                base["field_confidence"] = lead.field_confidence
+            capture_meta = CaptureMeta.model_validate(base)
+
         capture_meta_json = (
-            json.dumps(lead.capture_meta.model_dump(by_alias=True, exclude_none=True))
-            if lead.capture_meta
+            json.dumps(capture_meta.model_dump(by_alias=True, exclude_none=True))
+            if capture_meta
             else None
         )
+        card_image_id = capture_meta.card_image_id if capture_meta else None
 
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO leads (
                   id, name, company, designation, mobile, email, city, priority,
-                  summary, synced, captured_at, consent_at, capture_source, capture_meta
+                  summary, synced, captured_at, consent_at, capture_source, capture_meta,
+                  captured_by
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                   name = VALUES(name),
                   company = VALUES(company),
@@ -41,7 +53,8 @@ def upsert_lead_in_db(
                   captured_at = VALUES(captured_at),
                   consent_at = VALUES(consent_at),
                   capture_source = VALUES(capture_source),
-                  capture_meta = VALUES(capture_meta)
+                  capture_meta = VALUES(capture_meta),
+                  captured_by = COALESCE(leads.captured_by, VALUES(captured_by))
                 """,
                 (
                     lead.id,
@@ -58,6 +71,7 @@ def upsert_lead_in_db(
                     lead.consent_at,
                     lead.capture_source,
                     capture_meta_json,
+                    capturer_id,
                 ),
             )
 
@@ -81,6 +95,12 @@ def upsert_lead_in_db(
                 cur.execute(
                     "INSERT INTO lead_interests (lead_id, interest_id) VALUES (%s, %s)",
                     (lead.id, interest_id),
+                )
+
+            if card_image_id:
+                cur.execute(
+                    "UPDATE lead_card_images SET lead_id = %s WHERE id = %s",
+                    (lead.id, card_image_id),
                 )
 
             cur.execute(LEAD_SELECT_BY_ID_SQL, (lead.id,))

@@ -16,6 +16,10 @@ def map_lead_row(row: dict[str, Any]) -> Lead:
     interest_names = row.get("interest_names")
     interests = interest_names.split("||") if interest_names else []
 
+    field_confidence = None
+    if capture_meta and capture_meta.field_confidence:
+        field_confidence = capture_meta.field_confidence
+
     return Lead(
         id=row["id"],
         name=row["name"],
@@ -32,6 +36,10 @@ def map_lead_row(row: dict[str, Any]) -> Lead:
         interests=interests,
         capture_source=row.get("capture_source"),
         capture_meta=capture_meta,
+        field_confidence=field_confidence,
+        captured_by=row.get("captured_by"),
+        capturer_name=row.get("capturer_name"),
+        capturer_email=row.get("capturer_email"),
     )
 
 
@@ -69,8 +77,12 @@ LEAD_SELECT_SQL = """
     l.consent_at,
     l.capture_source,
     l.capture_meta,
+    l.captured_by,
+    u.name AS capturer_name,
+    u.email AS capturer_email,
     GROUP_CONCAT(pi.name ORDER BY pi.id SEPARATOR '||') AS interest_names
   FROM leads l
+  LEFT JOIN users u ON l.captured_by = u.id
   LEFT JOIN lead_interests li ON l.id = li.lead_id
   LEFT JOIN product_interests pi ON li.interest_id = pi.id
   GROUP BY l.id

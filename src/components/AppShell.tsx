@@ -1,6 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import { CreditCard, LayoutList, CalendarDays, ScanLine, UserRound, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
+import { useAuth } from "@/lib/auth";
+import { initials } from "@/lib/auth-session";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +49,9 @@ export function AppShell({
   children: ReactNode;
   action?: ReactNode;
 }) {
+  const { session } = useAuth();
+  const letters = session?.user ? initials(session.user.name) : "";
+
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto flex min-h-screen w-full max-w-[430px] flex-col bg-background shadow-card sm:my-6 sm:min-h-[calc(100vh-3rem)] sm:rounded-3xl sm:border sm:border-border sm:overflow-hidden">
@@ -62,6 +67,11 @@ export function AppShell({
               ) : null}
             </div>
             <div className="flex flex-col items-end gap-2">
+              {letters ? (
+                <div className="grid size-8 place-items-center rounded-full bg-card/15 text-[11px] font-semibold">
+                  {letters}
+                </div>
+              ) : null}
               <div className="rounded-full bg-card/95 p-0.5">
                 <SyncPill />
               </div>

@@ -27,6 +27,9 @@ export function VerificationPanel({ verification, lead }: Props) {
     seen.add(f.field);
     return ["name", "company", "designation", "mobile", "email", "city"].includes(f.field);
   });
+  const aiIssues = lead.captureMeta?.aiIssues ?? [];
+  const ocrQuality = lead.captureMeta?.ocrQuality;
+  const aiVerified = Boolean(lead.captureMeta?.aiVerifiedAt);
 
   return (
     <section className="mt-3 rounded-xl border border-border bg-card p-4 shadow-card">
@@ -41,6 +44,21 @@ export function VerificationPanel({ verification, lead }: Props) {
           {verification.readyToSave ? "Ready to save" : "Fix errors before saving"}
         </span>
       </div>
+
+      {(aiVerified || ocrQuality) && (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          {aiVerified ? "AI verified card fields" : "Local OCR"}
+          {ocrQuality ? ` · Image quality: ${ocrQuality}` : ""}
+        </p>
+      )}
+
+      {aiIssues.length > 0 && (
+        <ul className="mt-2 space-y-1 rounded-lg bg-secondary/60 px-3 py-2 text-[11px] text-warning-foreground">
+          {aiIssues.map((issue) => (
+            <li key={issue}>• {issue}</li>
+          ))}
+        </ul>
+      )}
 
       <div className="mt-2 h-2 overflow-hidden rounded-full bg-secondary">
         <div

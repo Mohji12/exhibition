@@ -1,12 +1,17 @@
 import time
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.database import get_connection
 from app.mappers import map_appointment_row
 from app.schemas import Appointment, UpsertAppointmentResponse
+from app.security import require_user
 
-router = APIRouter(prefix="/api/appointments", tags=["appointments"])
+router = APIRouter(
+    prefix="/api/appointments",
+    tags=["appointments"],
+    dependencies=[Depends(require_user)],
+)
 
 
 @router.post("", response_model=UpsertAppointmentResponse)

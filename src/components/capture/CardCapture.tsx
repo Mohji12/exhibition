@@ -4,10 +4,24 @@ import { Camera, RotateCcw, Upload } from "lucide-react";
 import { createWorker } from "tesseract.js";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { analyzeCardCapture, uploadCardImage } from "@/lib/api/http-client";
+import {
+  compressDataUrl,
+  putPendingCardImage,
+} from "@/lib/domain/capture/card-image-store";
 import { saveLeadDraft } from "@/lib/domain/capture/draft";
 import { averageConfidence, parseBusinessCardText } from "@/lib/domain/capture/parse-ocr";
 import { verifyCapturedLead } from "@/lib/domain/capture/verify-capture";
 import { createEmptyLead } from "@/lib/domain/leads";
+import type { CaptureMeta, Lead } from "@/lib/types";
+
+type CardPreview = {
+  lead: Partial<Lead>;
+  confidence: Partial<Record<keyof Lead, number>>;
+  source: "gemini" | "tesseract";
+  aiIssues: string[];
+  ocrQuality?: CaptureMeta["ocrQuality"];
+};
 
 export function CardCapture() {
   const navigate = useNavigate();
@@ -15,10 +29,13 @@ export function CardCapture() {
   const streamRef = useRef<MediaStream | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
-  const [parsedPreview, setParsedPreview] = useState<ReturnType<typeof parseBusinessCardText> | null>(
-    null,
-  );
+  const [statusLabel, setStatusLabel] = useState<string | null>(null);
+  const [parsedPreview, setParsedPreview] = useState<CardPreview | null>(null);
   const [ocrText, setOcrText] = useState("");
+  const [cardImageId, setCardImageId] = useState<string | undefined>();
+  const [pendingImageKey, setPendingImageKey] = useState<string | undefined>();
+  const [draftLeadId, setDraftLeadId] = useState<string | undefined>();
+  const backupPromiseRef = useRef<Promise<string | undefined> | null>(null);
   const [cameraOn, setCameraOn] = useState(false);
 
   const stopCamera = useCallback(() => {
@@ -66,11 +83,49 @@ export function CardCapture() {
     }
   };
 
+  const backupCardImage = async (dataUrl: string, leadId: string) => {
+    const compressed = await compressDataUrl(dataUrl, 0.85, 1600);
+    const localKey = `card:${leadId}`;
+    try {
+      // Do not pass leadId yet — lead row may not exist (FK). Attach on lead upsert.
+      const uploaded = await uploadCardImage({
+        imageBase64: compressed.dataUrl,
+        mimeType: compressed.mimeType,
+      });
+      if (uploaded.ok && uploaded.id) {
+        setCardImageId(uploaded.id);
+        setPendingImageKey(undefined);
+        return uploaded.id;
+      }
+    } catch {
+      /* offline — keep in IndexedDB */
+    }
+    await putPendingCardImage({
+      key: localKey,
+      imageBase64: compressed.dataUrl,
+      mimeType: compressed.mimeType,
+      leadId,
+      createdAt: new Date().toISOString(),
+    });
+    setPendingImageKey(localKey);
+    return undefined;
+  };
+
   const runOcr = async (dataUrl: string) => {
     setProgress(0);
+    setStatusLabel("Reading card…");
     setPreview(dataUrl);
     setParsedPreview(null);
     setOcrText("");
+    setCardImageId(undefined);
+    setPendingImageKey(undefined);
+
+    const draftLead = createEmptyLead();
+    setDraftLeadId(draftLead.id);
+    backupPromiseRef.current = backupCardImage(dataUrl, draftLead.id).catch((err) => {
+      console.warn(err);
+      return undefined;
+    });
 
     const worker = await createWorker("eng", undefined, {
       logger: (m) => {
@@ -80,19 +135,79 @@ export function CardCapture() {
       },
     });
 
+    let localText = "";
     try {
       const { data } = await worker.recognize(dataUrl);
-      setOcrText(data.text);
-      const parsed = parseBusinessCardText(data.text);
-      setParsedPreview(parsed);
-      setProgress(null);
+      localText = data.text;
+      setOcrText(localText);
     } catch (error) {
-      setProgress(null);
       console.error(error);
       toast.error("Could not read card text — try a clearer photo");
+      setProgress(null);
+      setStatusLabel(null);
+      return;
     } finally {
       await worker.terminate();
     }
+
+    if (!localText.trim()) {
+      toast.error("Could not read card text — try a clearer photo");
+      setProgress(null);
+      setStatusLabel(null);
+      return;
+    }
+
+    setProgress(null);
+    setStatusLabel("Validating with AI…");
+
+    try {
+      const ai = await analyzeCardCapture({
+        imageBase64: dataUrl,
+        mimeType: "image/jpeg",
+        ocrText: localText,
+      });
+
+      if (ai.ok) {
+        const confidence: Partial<Record<keyof Lead, number>> = {};
+        for (const key of ["name", "company", "designation", "mobile", "email", "city"] as const) {
+          const score = ai.fieldConfidence?.[key];
+          if (typeof score === "number") confidence[key] = score;
+        }
+        setParsedPreview({
+          lead: {
+            id: draftLead.id,
+            name: ai.fields.name || undefined,
+            company: ai.fields.company || undefined,
+            designation: ai.fields.designation || undefined,
+            mobile: ai.fields.mobile || undefined,
+            email: ai.fields.email || undefined,
+            city: ai.fields.city || undefined,
+          },
+          confidence,
+          source: "gemini",
+          aiIssues: ai.issues ?? [],
+          ocrQuality: ai.ocrQuality,
+        });
+        setStatusLabel(null);
+        return;
+      }
+
+      toast.message("AI unavailable — using local OCR", {
+        description: ai.error ?? undefined,
+      });
+    } catch (error) {
+      console.warn(error);
+      toast.message("AI unavailable — using local OCR");
+    }
+
+    const parsed = parseBusinessCardText(localText);
+    setParsedPreview({
+      lead: { ...parsed.lead, id: draftLead.id },
+      confidence: parsed.confidence,
+      source: "tesseract",
+      aiIssues: [],
+    });
+    setStatusLabel(null);
   };
 
   const captureFrame = () => {
@@ -116,12 +231,20 @@ export function CardCapture() {
     reader.readAsDataURL(file);
   };
 
-  const continueToForm = () => {
+  const continueToForm = async () => {
     if (!parsedPreview) return;
     const base = createEmptyLead();
+    const leadId = draftLeadId ?? parsedPreview.lead.id ?? base.id;
+
+    let imageId = cardImageId;
+    if (backupPromiseRef.current) {
+      imageId = (await backupPromiseRef.current) ?? imageId;
+    }
+
     const merged = {
       ...base,
       ...parsedPreview.lead,
+      id: leadId,
       name: parsedPreview.lead.name ?? "",
       company: parsedPreview.lead.company ?? "",
       designation: parsedPreview.lead.designation ?? "",
@@ -133,14 +256,23 @@ export function CardCapture() {
     const ocrConfidence = averageConfidence(parsedPreview.confidence);
     verifyCapturedLead(merged, { fieldConfidence: parsedPreview.confidence });
 
+    const captureMeta: CaptureMeta = {
+      ocrText,
+      ocrConfidence,
+      verifiedAt: new Date().toISOString(),
+      fieldConfidence: parsedPreview.confidence as CaptureMeta["fieldConfidence"],
+    };
+    if (imageId) captureMeta.cardImageId = imageId;
+    if (parsedPreview.source === "gemini") {
+      captureMeta.aiVerifiedAt = new Date().toISOString();
+      captureMeta.aiIssues = parsedPreview.aiIssues;
+      captureMeta.ocrQuality = parsedPreview.ocrQuality;
+    }
+
     saveLeadDraft({
       lead: merged,
       captureSource: "card",
-      captureMeta: {
-        ocrText,
-        ocrConfidence,
-        verifiedAt: new Date().toISOString(),
-      },
+      captureMeta,
       fieldConfidence: parsedPreview.confidence,
     });
 
@@ -194,23 +326,52 @@ export function CardCapture() {
       {preview && (
         <>
           <img src={preview} alt="Captured card" className="w-full rounded-xl border border-border" />
-          {progress !== null && (
-            <p className="text-center text-sm text-muted-foreground">Reading card… {progress}%</p>
+          {(progress !== null || statusLabel) && (
+            <p className="text-center text-sm text-muted-foreground">
+              {statusLabel ?? "Reading card…"}
+              {progress !== null ? ` ${progress}%` : ""}
+            </p>
           )}
           {parsedPreview && (
             <div className="rounded-xl border border-border bg-card p-4 text-sm">
-              <p className="font-semibold">{parsedPreview.lead.name}</p>
-              <p className="text-muted-foreground">{parsedPreview.lead.designation}</p>
-              <p>{parsedPreview.lead.company}</p>
-              <p className="mt-2 text-xs">{parsedPreview.lead.mobile}</p>
-              <p className="text-xs">{parsedPreview.lead.email}</p>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="font-semibold">{parsedPreview.lead.name}</p>
+                  <p className="text-muted-foreground">{parsedPreview.lead.designation}</p>
+                  <p>{parsedPreview.lead.company}</p>
+                  <p className="mt-2 text-xs">{parsedPreview.lead.mobile}</p>
+                  <p className="text-xs">{parsedPreview.lead.email}</p>
+                </div>
+                <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                  {parsedPreview.source === "gemini" ? "AI verified" : "Local OCR"}
+                </span>
+              </div>
+              {parsedPreview.ocrQuality && (
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Image quality: {parsedPreview.ocrQuality}
+                </p>
+              )}
+              {cardImageId ? (
+                <p className="mt-1 text-[11px] text-muted-foreground">Card photo backed up</p>
+              ) : pendingImageKey ? (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Card photo saved on device — will upload when online
+                </p>
+              ) : null}
+              {parsedPreview.aiIssues.length > 0 && (
+                <ul className="mt-2 space-y-1 text-[11px] text-warning-foreground">
+                  {parsedPreview.aiIssues.map((issue) => (
+                    <li key={issue}>• {issue}</li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
           <div className="flex gap-2">
             <Button
               className="h-11 flex-1 rounded-xl"
               disabled={!parsedPreview}
-              onClick={continueToForm}
+              onClick={() => void continueToForm()}
             >
               Continue to verify
             </Button>
@@ -220,6 +381,9 @@ export function CardCapture() {
               onClick={() => {
                 setPreview(null);
                 setParsedPreview(null);
+                setStatusLabel(null);
+                setCardImageId(undefined);
+                setPendingImageKey(undefined);
                 void startCamera();
               }}
             >

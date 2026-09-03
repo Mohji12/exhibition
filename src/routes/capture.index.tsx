@@ -98,7 +98,7 @@ function CaptureHomePage() {
             />
           </div>
           <p className="mt-2 text-[11px] text-muted-foreground">
-            Leads captured offline upload automatically when the booth Wi-Fi is available.
+            Offline leads stay on this device and sync automatically when connection returns (or tap Sync).
           </p>
         </div>
       </section>

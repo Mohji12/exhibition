@@ -15,6 +15,12 @@ class Settings(BaseSettings):
         "https://exhibition-mocha-sigma.vercel.app"
     )
     cors_origin_regex: str = r"https://.*\.vercel\.app"
+    auth_secret: str = "dev-change-me"
+    auth_bootstrap_email: str = "admin@conninter.example"
+    auth_bootstrap_pin: str = "2026"
+    auth_bootstrap_name: str = "Conninter Admin"
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
 
     @property
     def cors_origin_list(self) -> list[str]:

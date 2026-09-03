@@ -23,6 +23,11 @@ export const leadSchema = z.object({
       ocrConfidence: z.number().optional(),
       transcript: z.string().optional(),
       verifiedAt: z.string().optional(),
+      aiVerifiedAt: z.string().optional(),
+      aiIssues: z.array(z.string()).optional(),
+      ocrQuality: z.enum(["good", "fair", "poor"]).optional(),
+      cardImageId: z.string().optional(),
+      fieldConfidence: z.record(z.number()).optional(),
     })
     .optional(),
   fieldConfidence: z.record(z.number()).optional(),

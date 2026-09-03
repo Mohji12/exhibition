@@ -28,6 +28,7 @@ import {
   type PendingQueue,
 } from "@/lib/domain/sync";
 import type { Appointment, Lead, TeamMember } from "./types";
+import { useAuth } from "@/lib/auth";
 
 export type SeedSource = "api" | "error" | "loading";
 
@@ -39,11 +40,11 @@ type StoreValue = {
   seedSource: SeedSource;
   syncing: boolean;
   lastSyncError?: string;
-  saveLead: (lead: Lead) => Promise<void>;
+  saveLead: (lead: Lead) => Promise<Lead>;
   addAppointment: (a: Omit<Appointment, "id">) => Promise<void>;
   addInterest: (tag: string) => Promise<void>;
   removeInterest: (tag: string) => Promise<void>;
-  syncAll: () => Promise<void>;
+  syncAll: (opts?: { silent?: boolean }) => Promise<void>;
   pendingSync: number;
 };
 
@@ -54,6 +55,8 @@ function persistQueue(queue: PendingQueue) {
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
+  const { session } = useAuth();
+  const token = session?.token;
   const [leads, setLeads] = useState<Lead[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [interests, setInterests] = useState<string[]>([]);
@@ -62,10 +65,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [syncing, setSyncing] = useState(false);
   const [lastSyncError, setLastSyncError] = useState<string | undefined>();
   const pendingRef = useRef<PendingQueue>({ leads: [], appointments: [] });
+  const leadsRef = useRef<Lead[]>([]);
+  const syncingRef = useRef(false);
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    leadsRef.current = leads;
+  }, [leads]);
 
   useEffect(() => {
     let cancelled = false;
     pendingRef.current = loadPendingQueue();
+
+    if (!token) {
+      setLeads([]);
+      setAppointments([]);
+      setInterests([]);
+      setTeam([]);
+      setSeedSource("loading");
+      return () => {
+        cancelled = true;
+      };
+    }
 
     fetchSeedData()
       .then((data) => {
@@ -112,7 +133,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [token]);
 
   const trySyncLead = useCallback(async (lead: Lead): Promise<Lead> => {
     try {
@@ -141,6 +162,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       const synced = await trySyncLead(unsynced);
       setLeads((prev) => mergeLead(prev, synced));
+      return synced;
     },
     [trySyncLead],
   );
@@ -198,10 +220,60 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const syncAll = useCallback(async () => {
-    const queue = buildSyncQueue(leads);
-    if (queue.length === 0) return;
+  const syncAll = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false;
 
+    // Flush offline card images first so lead upsert can attach cardImageId
+    try {
+      const { listPendingCardImages, deletePendingCardImage } = await import(
+        "@/lib/domain/capture/card-image-store"
+      );
+      const { uploadCardImage } = await import("@/lib/api/http-client");
+      const pendingImages = await listPendingCardImages();
+      for (const img of pendingImages) {
+        try {
+          const uploaded = await uploadCardImage({
+            imageBase64: img.imageBase64,
+            mimeType: img.mimeType,
+            // Attach only if lead already exists in DB; otherwise upsert binds via cardImageId
+            leadId: undefined,
+          });
+          if (uploaded.ok && uploaded.id) {
+            await deletePendingCardImage(img.key);
+            if (img.leadId) {
+              const withImageMeta = (l: Lead): Lead => ({
+                ...l,
+                captureMeta: {
+                  ...l.captureMeta,
+                  cardImageId: uploaded.id,
+                },
+                synced: false,
+              });
+              setLeads((prev) => prev.map((l) => (l.id === img.leadId ? withImageMeta(l) : l)));
+              const lead = leadsRef.current.find((l) => l.id === img.leadId);
+              if (lead) {
+                const withImage = withImageMeta(lead);
+                leadsRef.current = leadsRef.current.map((l) =>
+                  l.id === img.leadId ? withImage : l,
+                );
+                pendingRef.current = upsertPendingLead(pendingRef.current, withImage);
+                persistQueue(pendingRef.current);
+              }
+            }
+          }
+        } catch {
+          /* keep in IndexedDB */
+        }
+      }
+    } catch {
+      /* IndexedDB unavailable */
+    }
+
+    const queue = buildSyncQueue(leadsRef.current);
+    if (queue.length === 0) return;
+    if (syncingRef.current) return;
+
+    syncingRef.current = true;
     setSyncing(true);
     try {
       const result = await syncPendingLeads(queue);
@@ -211,22 +283,67 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       if (result.failed.length === 0) {
         setLastSyncError(undefined);
-        toast.success(`${result.synced.length} lead${result.synced.length === 1 ? "" : "s"} synced`);
+        if (!silent && result.synced.length > 0) {
+          toast.success(`${result.synced.length} lead${result.synced.length === 1 ? "" : "s"} synced`);
+        }
       } else {
         const msg = `${result.failed.length} failed — retry later`;
         setLastSyncError(msg);
-        toast.warning(`${result.synced.length} synced, ${result.failed.length} failed`, {
-          description: result.failed[0]?.error,
-        });
+        if (!silent) {
+          toast.warning(`${result.synced.length} synced, ${result.failed.length} failed`, {
+            description: result.failed[0]?.error,
+          });
+        }
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Sync failed";
       setLastSyncError(msg);
-      toast.error("Sync failed", { description: msg });
+      if (!silent) toast.error("Sync failed", { description: msg });
     } finally {
+      syncingRef.current = false;
       setSyncing(false);
     }
-  }, [leads]);
+  }, []);
+
+  const scheduleFlush = useCallback(
+    (opts?: { silent?: boolean }) => {
+      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = setTimeout(() => {
+        void syncAll({ silent: opts?.silent ?? true });
+      }, 400);
+    },
+    [syncAll],
+  );
+
+  // Flush pending leads after seed load, on reconnect, and when tab becomes visible.
+  useEffect(() => {
+    if (!token) return;
+
+    const maybeFlush = (silent: boolean) => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) return;
+      const hasPending =
+        pendingRef.current.leads.some((l) => !l.synced) ||
+        leadsRef.current.some((l) => !l.synced);
+      if (hasPending) scheduleFlush({ silent });
+    };
+
+    const bootTimer = setTimeout(() => maybeFlush(true), 800);
+
+    const onOnline = () => scheduleFlush({ silent: false });
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") maybeFlush(true);
+    };
+
+    window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      clearTimeout(bootTimer);
+      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [token, scheduleFlush]);
 
   const value = useMemo<StoreValue>(
     () => ({
