@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.bootstrap import bootstrap_auth
 from app.config import settings
-from app.routers import admin, appointments, auth, capture, interests, leads, seed
+from app.routers import admin, appointments, auth, capture, interests, leads, public, seed
 
 
 @asynccontextmanager
@@ -33,6 +33,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(capture.router)
+app.include_router(public.router)
 app.include_router(seed.router)
 app.include_router(leads.router)
 app.include_router(appointments.router)

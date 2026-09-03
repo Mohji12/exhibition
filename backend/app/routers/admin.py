@@ -50,6 +50,10 @@ def _user_out(row: dict) -> AuthUserOut:
         email=row["email"],
         role=row["role"],
         status=row["status"],
+        company=row.get("company"),
+        designation=row.get("designation"),
+        mobile=row.get("mobile"),
+        share_token=row.get("share_token"),
         created_at=row.get("created_at"),
         activated_at=row.get("activated_at"),
         leads_captured=int(row.get("leads_captured") or 0),
@@ -58,7 +62,8 @@ def _user_out(row: dict) -> AuthUserOut:
 
 _USER_WITH_COUNTS_SQL = """
             SELECT
-              u.id, u.name, u.email, u.role, u.status, u.created_at, u.activated_at,
+              u.id, u.name, u.email, u.role, u.status, u.company, u.designation, u.mobile,
+              u.share_token, u.created_at, u.activated_at,
               COUNT(l.id) AS leads_captured
             FROM users u
             LEFT JOIN leads l ON l.captured_by = u.id
@@ -286,17 +291,7 @@ def overview() -> AdminOverview:
 @router.get("/users", response_model=list[AuthUserOut])
 def list_users() -> list[AuthUserOut]:
     with get_connection() as conn, conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT
-              u.id, u.name, u.email, u.role, u.status, u.created_at, u.activated_at,
-              COUNT(l.id) AS leads_captured
-            FROM users u
-            LEFT JOIN leads l ON l.captured_by = u.id
-            GROUP BY u.id
-            ORDER BY u.created_at ASC
-            """
-        )
+        cur.execute(f"{_USER_WITH_COUNTS_SQL} GROUP BY u.id ORDER BY u.created_at ASC")
         rows = cur.fetchall()
     return [_user_out(row) for row in rows]
 
@@ -312,13 +307,20 @@ def patch_user(
         and body.role is None
         and body.name is None
         and body.email is None
+        and body.company is None
+        and body.designation is None
+        and body.mobile is None
         and body.login_pin is None
     ):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nothing to update")
 
     with get_connection() as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT id, name, email, role, status, created_at, activated_at FROM users WHERE id = %s",
+            """
+            SELECT id, name, email, role, status, company, designation, mobile,
+                   share_token, created_at, activated_at
+            FROM users WHERE id = %s
+            """,
             (user_id,),
         )
         row = cur.fetchone()
@@ -329,6 +331,11 @@ def patch_user(
         new_role = body.role or row["role"]
         new_name = body.name.strip() if body.name else row["name"]
         new_email = str(body.email).strip().lower() if body.email else row["email"]
+        new_company = body.company.strip() if body.company is not None else row.get("company")
+        new_designation = (
+            body.designation.strip() if body.designation is not None else row.get("designation")
+        )
+        new_mobile = body.mobile.strip() if body.mobile is not None else row.get("mobile")
 
         if user_id == admin.id and (new_status == "disabled" or new_role != "Admin"):
             raise HTTPException(
@@ -353,8 +360,24 @@ def patch_user(
             if cur.fetchone():
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already in use")
 
-        sets = ["status = %s", "role = %s", "name = %s", "email = %s"]
-        params: list = [new_status, new_role, new_name, new_email]
+        sets = [
+            "status = %s",
+            "role = %s",
+            "name = %s",
+            "email = %s",
+            "company = %s",
+            "designation = %s",
+            "mobile = %s",
+        ]
+        params: list = [
+            new_status,
+            new_role,
+            new_name,
+            new_email,
+            new_company or None,
+            new_designation or None,
+            new_mobile or None,
+        ]
         if body.login_pin:
             sets.append("pin_hash = %s")
             params.append(hash_pin(body.login_pin))

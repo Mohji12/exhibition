@@ -5,7 +5,7 @@ import uuid
 
 from app.config import settings
 from app.database import get_connection
-from app.security import hash_pin
+from app.security import generate_token, hash_pin
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +75,36 @@ def _ensure_captured_by(cur) -> None:
         logger.info("Added fk_leads_captured_by")
 
 
+def _ensure_user_profile_columns(cur) -> None:
+    if not _column_exists(cur, "users", "company"):
+        cur.execute("ALTER TABLE users ADD COLUMN company VARCHAR(200) NULL")
+        logger.info("Added users.company column")
+    if not _column_exists(cur, "users", "designation"):
+        cur.execute("ALTER TABLE users ADD COLUMN designation VARCHAR(120) NULL")
+        logger.info("Added users.designation column")
+    if not _column_exists(cur, "users", "mobile"):
+        cur.execute("ALTER TABLE users ADD COLUMN mobile VARCHAR(32) NULL")
+        logger.info("Added users.mobile column")
+    if not _column_exists(cur, "users", "share_token"):
+        cur.execute("ALTER TABLE users ADD COLUMN share_token VARCHAR(64) NULL")
+        logger.info("Added users.share_token column")
+        try:
+            cur.execute(
+                "ALTER TABLE users ADD UNIQUE INDEX uq_users_share_token (share_token)"
+            )
+        except Exception:
+            logger.warning("Could not add uq_users_share_token", exc_info=True)
+    cur.execute("SELECT id FROM users WHERE share_token IS NULL OR share_token = ''")
+    missing = cur.fetchall()
+    for row in missing:
+        cur.execute(
+            "UPDATE users SET share_token = %s WHERE id = %s",
+            (generate_token(), row["id"]),
+        )
+    if missing:
+        logger.info("Backfilled share_token for %s user(s)", len(missing))
+
+
 def _ensure_user(cur, name: str, email: str, pin: str, role: str) -> str:
     cur.execute("SELECT id FROM users WHERE email = %s", (email,))
     row = cur.fetchone()
@@ -83,10 +113,10 @@ def _ensure_user(cur, name: str, email: str, pin: str, role: str) -> str:
     user_id = str(uuid.uuid4())
     cur.execute(
         """
-        INSERT INTO users (id, name, email, pin_hash, role, status, activated_at)
-        VALUES (%s, %s, %s, %s, %s, 'active', CURRENT_TIMESTAMP)
+        INSERT INTO users (id, name, email, pin_hash, role, status, activated_at, share_token)
+        VALUES (%s, %s, %s, %s, %s, 'active', CURRENT_TIMESTAMP, %s)
         """,
-        (user_id, name, email, hash_pin(pin), role),
+        (user_id, name, email, hash_pin(pin), role, generate_token()),
     )
     logger.info("Bootstrapped %s account for %s", role, email)
     return user_id
@@ -187,6 +217,7 @@ def bootstrap_auth() -> None:
         cur.execute(_CREATE_INVITES)
         conn.commit()
 
+        _ensure_user_profile_columns(cur)
         _ensure_user(cur, name, email, pin, "Admin")
         _ensure_captured_by(cur)
         _ensure_card_images(cur)

@@ -149,6 +149,10 @@ class AuthUserOut(CamelModel):
     email: EmailStr
     role: TeamRole
     status: AccountStatus
+    company: str | None = None
+    designation: str | None = None
+    mobile: str | None = None
+    share_token: str | None = None
     created_at: datetime | None = None
     activated_at: datetime | None = None
     leads_captured: int = 0
@@ -170,6 +174,36 @@ class ActivateRequest(CamelModel):
     name: str = Field(min_length=1, max_length=100)
     email: EmailStr
     login_pin: Pin4
+
+
+class PatchMeRequest(CamelModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    email: EmailStr | None = None
+    company: str | None = Field(default=None, max_length=200)
+    designation: str | None = Field(default=None, max_length=120)
+    mobile: str | None = Field(default=None, max_length=32)
+    login_pin: Pin4 | None = None
+
+
+class PublicExhibitorOut(CamelModel):
+    name: str
+    email: EmailStr
+    company: str | None = None
+    designation: str | None = None
+    mobile: str | None = None
+    interests: list[str] = Field(default_factory=list)
+
+
+class PublicVisitorLeadRequest(CamelModel):
+    name: str = Field(min_length=1, max_length=120)
+    company: str | None = Field(default=None, max_length=200)
+    designation: str | None = Field(default=None, max_length=120)
+    mobile: str | None = Field(default=None, max_length=32)
+    email: str | None = Field(default=None, max_length=200)
+    city: str | None = Field(default=None, max_length=120)
+    interests: list[str] = Field(default_factory=list)
+    capture_source: CaptureSource = "qr"
+    ocr_text: str | None = None
 
 
 class InviteStatus(CamelModel):
@@ -233,6 +267,9 @@ class PatchUserRequest(CamelModel):
     role: TeamRole | None = None
     name: str | None = Field(default=None, min_length=1, max_length=100)
     email: EmailStr | None = None
+    company: str | None = Field(default=None, max_length=200)
+    designation: str | None = Field(default=None, max_length=120)
+    mobile: str | None = Field(default=None, max_length=32)
     login_pin: Pin4 | None = None
 
 

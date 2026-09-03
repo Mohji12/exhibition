@@ -17,19 +17,20 @@ import { Route as JoinRouteImport } from './routes/join'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as ScheduleRouteImport } from './routes/schedule'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as AdminClientsRouteImport } from './routes/admin.clients'
 import { Route as AdminEventRouteImport } from './routes/admin.event'
 import { Route as AdminFollowupsRouteImport } from './routes/admin.followups'
 import { Route as AdminInviteRouteImport } from './routes/admin.invite'
 import { Route as AdminLeadsRouteImport } from './routes/admin.leads'
 import { Route as AdminReportRouteImport } from './routes/admin.report'
 import { Route as AdminStaffRouteImport } from './routes/admin.staff'
-import { Route as AdminClientsRouteImport } from './routes/admin.clients'
-import { Route as AdminClientsUserIdRouteImport } from './routes/admin.clients.$userId'
 import { Route as CaptureIndexRouteImport } from './routes/capture.index'
 import { Route as CaptureCardRouteImport } from './routes/capture.card'
 import { Route as CaptureQrRouteImport } from './routes/capture.qr'
+import { Route as EShareTokenRouteImport } from './routes/e.$shareToken'
 import { Route as LeadsIndexRouteImport } from './routes/leads.index'
 import { Route as LeadsLeadIdRouteImport } from './routes/leads.$leadId'
+import { Route as AdminClientsUserIdRouteImport } from './routes/admin.clients.$userId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -71,6 +72,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminClientsRoute = AdminClientsRouteImport.update({
+  id: '/clients',
+  path: '/clients',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminEventRoute = AdminEventRouteImport.update({
   id: '/event',
   path: '/event',
@@ -101,16 +107,6 @@ const AdminStaffRoute = AdminStaffRouteImport.update({
   path: '/staff',
   getParentRoute: () => AdminRoute,
 } as any)
-const AdminClientsRoute = AdminClientsRouteImport.update({
-  id: '/clients',
-  path: '/clients',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminClientsUserIdRoute = AdminClientsUserIdRouteImport.update({
-  id: '/clients/$userId',
-  path: '/clients/$userId',
-  getParentRoute: () => AdminRoute,
-} as any)
 const CaptureIndexRoute = CaptureIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -126,6 +122,11 @@ const CaptureQrRoute = CaptureQrRouteImport.update({
   path: '/qr',
   getParentRoute: () => CaptureRoute,
 } as any)
+const EShareTokenRoute = EShareTokenRouteImport.update({
+  id: '/e/$shareToken',
+  path: '/e/$shareToken',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LeadsIndexRoute = LeadsIndexRouteImport.update({
   id: '/leads/',
   path: '/leads/',
@@ -136,6 +137,11 @@ const LeadsLeadIdRoute = LeadsLeadIdRouteImport.update({
   path: '/leads/$leadId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminClientsUserIdRoute = AdminClientsUserIdRouteImport.update({
+  id: '/$userId',
+  path: '/$userId',
+  getParentRoute: () => AdminClientsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -145,20 +151,21 @@ export interface FileRoutesByFullPath {
   '/join': typeof JoinRoute
   '/profile': typeof ProfileRoute
   '/schedule': typeof ScheduleRoute
+  '/admin/clients': typeof AdminClientsRouteWithChildren
   '/admin/event': typeof AdminEventRoute
   '/admin/followups': typeof AdminFollowupsRoute
   '/admin/invite': typeof AdminInviteRoute
   '/admin/leads': typeof AdminLeadsRoute
   '/admin/report': typeof AdminReportRoute
   '/admin/staff': typeof AdminStaffRoute
-  '/admin/clients': typeof AdminClientsRoute
-  '/admin/clients/$userId': typeof AdminClientsUserIdRoute
   '/capture/card': typeof CaptureCardRoute
   '/capture/qr': typeof CaptureQrRoute
+  '/e/$shareToken': typeof EShareTokenRoute
   '/leads/$leadId': typeof LeadsLeadIdRoute
   '/admin/': typeof AdminIndexRoute
   '/capture/': typeof CaptureIndexRoute
   '/leads/': typeof LeadsIndexRoute
+  '/admin/clients/$userId': typeof AdminClientsUserIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -166,20 +173,21 @@ export interface FileRoutesByTo {
   '/join': typeof JoinRoute
   '/profile': typeof ProfileRoute
   '/schedule': typeof ScheduleRoute
+  '/admin/clients': typeof AdminClientsRouteWithChildren
   '/admin/event': typeof AdminEventRoute
   '/admin/followups': typeof AdminFollowupsRoute
   '/admin/invite': typeof AdminInviteRoute
   '/admin/leads': typeof AdminLeadsRoute
   '/admin/report': typeof AdminReportRoute
   '/admin/staff': typeof AdminStaffRoute
-  '/admin/clients': typeof AdminClientsRoute
-  '/admin/clients/$userId': typeof AdminClientsUserIdRoute
   '/capture/card': typeof CaptureCardRoute
   '/capture/qr': typeof CaptureQrRoute
+  '/e/$shareToken': typeof EShareTokenRoute
   '/leads/$leadId': typeof LeadsLeadIdRoute
   '/admin': typeof AdminIndexRoute
   '/capture': typeof CaptureIndexRoute
   '/leads': typeof LeadsIndexRoute
+  '/admin/clients/$userId': typeof AdminClientsUserIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -190,20 +198,21 @@ export interface FileRoutesById {
   '/join': typeof JoinRoute
   '/profile': typeof ProfileRoute
   '/schedule': typeof ScheduleRoute
+  '/admin/clients': typeof AdminClientsRouteWithChildren
   '/admin/event': typeof AdminEventRoute
   '/admin/followups': typeof AdminFollowupsRoute
   '/admin/invite': typeof AdminInviteRoute
   '/admin/leads': typeof AdminLeadsRoute
   '/admin/report': typeof AdminReportRoute
   '/admin/staff': typeof AdminStaffRoute
-  '/admin/clients': typeof AdminClientsRoute
-  '/admin/clients/$userId': typeof AdminClientsUserIdRoute
   '/capture/card': typeof CaptureCardRoute
   '/capture/qr': typeof CaptureQrRoute
+  '/e/$shareToken': typeof EShareTokenRoute
   '/leads/$leadId': typeof LeadsLeadIdRoute
   '/admin/': typeof AdminIndexRoute
   '/capture/': typeof CaptureIndexRoute
   '/leads/': typeof LeadsIndexRoute
+  '/admin/clients/$userId': typeof AdminClientsUserIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -215,20 +224,21 @@ export interface FileRouteTypes {
     | '/join'
     | '/profile'
     | '/schedule'
+    | '/admin/clients'
     | '/admin/event'
     | '/admin/followups'
     | '/admin/invite'
     | '/admin/leads'
     | '/admin/report'
     | '/admin/staff'
-    | '/admin/clients'
-    | '/admin/clients/$userId'
     | '/capture/card'
     | '/capture/qr'
+    | '/e/$shareToken'
     | '/leads/$leadId'
     | '/admin/'
     | '/capture/'
     | '/leads/'
+    | '/admin/clients/$userId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -236,20 +246,21 @@ export interface FileRouteTypes {
     | '/join'
     | '/profile'
     | '/schedule'
+    | '/admin/clients'
     | '/admin/event'
     | '/admin/followups'
     | '/admin/invite'
     | '/admin/leads'
     | '/admin/report'
     | '/admin/staff'
-    | '/admin/clients'
-    | '/admin/clients/$userId'
     | '/capture/card'
     | '/capture/qr'
+    | '/e/$shareToken'
     | '/leads/$leadId'
     | '/admin'
     | '/capture'
     | '/leads'
+    | '/admin/clients/$userId'
   id:
     | '__root__'
     | '/'
@@ -259,20 +270,21 @@ export interface FileRouteTypes {
     | '/join'
     | '/profile'
     | '/schedule'
+    | '/admin/clients'
     | '/admin/event'
     | '/admin/followups'
     | '/admin/invite'
     | '/admin/leads'
     | '/admin/report'
     | '/admin/staff'
-    | '/admin/clients'
-    | '/admin/clients/$userId'
     | '/capture/card'
     | '/capture/qr'
+    | '/e/$shareToken'
     | '/leads/$leadId'
     | '/admin/'
     | '/capture/'
     | '/leads/'
+    | '/admin/clients/$userId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -283,6 +295,7 @@ export interface RootRouteChildren {
   JoinRoute: typeof JoinRoute
   ProfileRoute: typeof ProfileRoute
   ScheduleRoute: typeof ScheduleRoute
+  EShareTokenRoute: typeof EShareTokenRoute
   LeadsLeadIdRoute: typeof LeadsLeadIdRoute
   LeadsIndexRoute: typeof LeadsIndexRoute
 }
@@ -345,6 +358,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/clients': {
+      id: '/admin/clients'
+      path: '/clients'
+      fullPath: '/admin/clients'
+      preLoaderRoute: typeof AdminClientsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/event': {
       id: '/admin/event'
       path: '/event'
@@ -387,20 +407,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminStaffRouteImport
       parentRoute: typeof AdminRoute
     }
-    '/admin/clients': {
-      id: '/admin/clients'
-      path: '/clients'
-      fullPath: '/admin/clients'
-      preLoaderRoute: typeof AdminClientsRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/clients/$userId': {
-      id: '/admin/clients/$userId'
-      path: '/clients/$userId'
-      fullPath: '/admin/clients/$userId'
-      preLoaderRoute: typeof AdminClientsUserIdRouteImport
-      parentRoute: typeof AdminRoute
-    }
     '/capture/': {
       id: '/capture/'
       path: '/'
@@ -422,6 +428,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CaptureQrRouteImport
       parentRoute: typeof CaptureRoute
     }
+    '/e/$shareToken': {
+      id: '/e/$shareToken'
+      path: '/e/$shareToken'
+      fullPath: '/e/$shareToken'
+      preLoaderRoute: typeof EShareTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/leads/': {
       id: '/leads/'
       path: '/leads'
@@ -436,30 +449,47 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LeadsLeadIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/clients/$userId': {
+      id: '/admin/clients/$userId'
+      path: '/$userId'
+      fullPath: '/admin/clients/$userId'
+      preLoaderRoute: typeof AdminClientsUserIdRouteImport
+      parentRoute: typeof AdminClientsRoute
+    }
   }
 }
 
+interface AdminClientsRouteChildren {
+  AdminClientsUserIdRoute: typeof AdminClientsUserIdRoute
+}
+
+const AdminClientsRouteChildren: AdminClientsRouteChildren = {
+  AdminClientsUserIdRoute: AdminClientsUserIdRoute,
+}
+
+const AdminClientsRouteWithChildren = AdminClientsRoute._addFileChildren(
+  AdminClientsRouteChildren,
+)
+
 interface AdminRouteChildren {
+  AdminClientsRoute: typeof AdminClientsRouteWithChildren
   AdminEventRoute: typeof AdminEventRoute
   AdminFollowupsRoute: typeof AdminFollowupsRoute
   AdminInviteRoute: typeof AdminInviteRoute
   AdminLeadsRoute: typeof AdminLeadsRoute
   AdminReportRoute: typeof AdminReportRoute
   AdminStaffRoute: typeof AdminStaffRoute
-  AdminClientsRoute: typeof AdminClientsRoute
-  AdminClientsUserIdRoute: typeof AdminClientsUserIdRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
+  AdminClientsRoute: AdminClientsRouteWithChildren,
   AdminEventRoute: AdminEventRoute,
   AdminFollowupsRoute: AdminFollowupsRoute,
   AdminInviteRoute: AdminInviteRoute,
   AdminLeadsRoute: AdminLeadsRoute,
   AdminReportRoute: AdminReportRoute,
   AdminStaffRoute: AdminStaffRoute,
-  AdminClientsRoute: AdminClientsRoute,
-  AdminClientsUserIdRoute: AdminClientsUserIdRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 
@@ -488,19 +518,10 @@ const rootRouteChildren: RootRouteChildren = {
   JoinRoute: JoinRoute,
   ProfileRoute: ProfileRoute,
   ScheduleRoute: ScheduleRoute,
+  EShareTokenRoute: EShareTokenRoute,
   LeadsLeadIdRoute: LeadsLeadIdRoute,
   LeadsIndexRoute: LeadsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

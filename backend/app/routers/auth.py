@@ -1,15 +1,25 @@
 from __future__ import annotations
 
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.database import get_connection
-from app.schemas import ActivateRequest, AuthResponse, AuthUserOut, InviteStatus, LoginRequest
+from app.schemas import (
+    ActivateRequest,
+    AuthResponse,
+    AuthUserOut,
+    InviteStatus,
+    LoginRequest,
+    PatchMeRequest,
+)
 from app.security import (
     check_rate_limit,
+    generate_token,
     hash_pin,
     issue_jwt,
+    require_user,
     utcnow,
     verify_pin,
     CurrentUser,
@@ -17,16 +27,26 @@ from app.security import (
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
+_USER_COLS = (
+    "id, name, email, role, status, company, designation, mobile, share_token, "
+    "created_at, activated_at"
+)
 
-def _row_to_user(row: dict) -> AuthUserOut:
+
+def _row_to_user(row: dict, leads_captured: int = 0) -> AuthUserOut:
     return AuthUserOut(
         id=row["id"],
         name=row["name"],
         email=row["email"],
         role=row["role"],
         status=row["status"],
+        company=row.get("company"),
+        designation=row.get("designation"),
+        mobile=row.get("mobile"),
+        share_token=row.get("share_token"),
         created_at=row.get("created_at"),
         activated_at=row.get("activated_at"),
+        leads_captured=leads_captured,
     )
 
 
@@ -49,8 +69,8 @@ def login(body: LoginRequest) -> AuthResponse:
 
     with get_connection() as conn, conn.cursor() as cur:
         cur.execute(
-            """
-            SELECT id, name, email, pin_hash, role, status, created_at, activated_at
+            f"""
+            SELECT {_USER_COLS}, pin_hash
             FROM users WHERE email = %s
             """,
             (email,),
@@ -109,19 +129,80 @@ def activate(body: ActivateRequest) -> AuthResponse:
         user_id = str(uuid.uuid4())
         cur.execute(
             """
-            INSERT INTO users (id, name, email, pin_hash, role, status, activated_at)
-            VALUES (%s, %s, %s, %s, 'Rep', 'active', CURRENT_TIMESTAMP)
+            INSERT INTO users (id, name, email, pin_hash, role, status, activated_at, share_token)
+            VALUES (%s, %s, %s, %s, 'Rep', 'active', CURRENT_TIMESTAMP, %s)
             """,
-            (user_id, name, email, hash_pin(body.login_pin)),
+            (user_id, name, email, hash_pin(body.login_pin), generate_token()),
         )
         conn.commit()
-        cur.execute(
-            """
-            SELECT id, name, email, role, status, created_at, activated_at
-            FROM users WHERE id = %s
-            """,
-            (user_id,),
-        )
+        cur.execute(f"SELECT {_USER_COLS} FROM users WHERE id = %s", (user_id,))
         row = cur.fetchone()
 
+    return _auth_response(row)
+
+
+@router.patch("/me", response_model=AuthResponse)
+def patch_me(
+    body: PatchMeRequest,
+    user: Annotated[CurrentUser, Depends(require_user)],
+) -> AuthResponse:
+    if (
+        body.name is None
+        and body.email is None
+        and body.company is None
+        and body.designation is None
+        and body.mobile is None
+        and body.login_pin is None
+    ):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nothing to update")
+
+    with get_connection() as conn, conn.cursor() as cur:
+        cur.execute(f"SELECT {_USER_COLS} FROM users WHERE id = %s", (user.id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        new_name = body.name.strip() if body.name is not None else row["name"]
+        new_email = str(body.email).strip().lower() if body.email is not None else row["email"]
+        new_company = body.company.strip() if body.company is not None else row.get("company")
+        new_designation = (
+            body.designation.strip() if body.designation is not None else row.get("designation")
+        )
+        new_mobile = body.mobile.strip() if body.mobile is not None else row.get("mobile")
+
+        if not new_name:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Name is required")
+
+        if new_email != row["email"]:
+            cur.execute("SELECT id FROM users WHERE email = %s AND id <> %s", (new_email, user.id))
+            if cur.fetchone():
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already in use")
+
+        sets = [
+            "name = %s",
+            "email = %s",
+            "company = %s",
+            "designation = %s",
+            "mobile = %s",
+        ]
+        params: list = [new_name, new_email, new_company or None, new_designation or None, new_mobile or None]
+        if body.login_pin:
+            sets.append("pin_hash = %s")
+            params.append(hash_pin(body.login_pin))
+        params.append(user.id)
+        cur.execute(f"UPDATE users SET {', '.join(sets)} WHERE id = %s", params)
+        conn.commit()
+        cur.execute(f"SELECT {_USER_COLS} FROM users WHERE id = %s", (user.id,))
+        updated = cur.fetchone()
+
+    return _auth_response(updated)
+
+
+@router.get("/me", response_model=AuthResponse)
+def get_me(user: Annotated[CurrentUser, Depends(require_user)]) -> AuthResponse:
+    with get_connection() as conn, conn.cursor() as cur:
+        cur.execute(f"SELECT {_USER_COLS} FROM users WHERE id = %s", (user.id,))
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return _auth_response(row)

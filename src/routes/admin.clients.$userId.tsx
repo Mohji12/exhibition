@@ -28,6 +28,9 @@ function ClientDetailPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [company, setCompany] = useState("");
+  const [designation, setDesignation] = useState("");
+  const [mobile, setMobile] = useState("");
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -41,6 +44,9 @@ function ClientDetailPage() {
         setUser(nextUser);
         setName(nextUser.name);
         setEmail(nextUser.email);
+        setCompany(nextUser.company ?? "");
+        setDesignation(nextUser.designation ?? "");
+        setMobile(nextUser.mobile ?? "");
         setLeads(nextLeads);
       })
       .catch((err: unknown) => {
@@ -56,7 +62,14 @@ function ClientDetailPage() {
     setBusy(true);
     setError("");
     try {
-      const body: { name: string; email: string; loginPin?: string } = { name, email };
+      const body: {
+        name: string;
+        email: string;
+        company: string;
+        designation: string;
+        mobile: string;
+        loginPin?: string;
+      } = { name, email, company, designation, mobile };
       if (pin.trim()) body.loginPin = pin.trim();
       const next = await patchAdminUser(user.id, body);
       setUser(next);
@@ -110,7 +123,7 @@ function ClientDetailPage() {
       <section className="mt-8 space-y-3 rounded-2xl border border-border bg-card p-4 shadow-card">
         <h2 className="text-sm font-semibold text-foreground">Edit exhibitor</h2>
         <div className="space-y-1.5">
-          <Label htmlFor="name">Name / company</Label>
+          <Label htmlFor="name">Name</Label>
           <Input id="name" value={name} onChange={(e) => setName(e.target.value)} className="h-11 rounded-xl" />
         </div>
         <div className="space-y-1.5">
@@ -120,6 +133,33 @@ function ClientDetailPage() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            className="h-11 rounded-xl"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="company">Company</Label>
+          <Input
+            id="company"
+            value={company}
+            onChange={(e) => setCompany(e.target.value)}
+            className="h-11 rounded-xl"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="designation">Designation</Label>
+          <Input
+            id="designation"
+            value={designation}
+            onChange={(e) => setDesignation(e.target.value)}
+            className="h-11 rounded-xl"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="mobile">Mobile</Label>
+          <Input
+            id="mobile"
+            value={mobile}
+            onChange={(e) => setMobile(e.target.value)}
             className="h-11 rounded-xl"
           />
         </div>

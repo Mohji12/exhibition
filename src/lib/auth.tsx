@@ -56,7 +56,8 @@ export function useAuth() {
 export function AuthGate({ children }: { children: ReactNode }) {
   const { session, ready } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const isPublic = pathname === "/" || pathname.startsWith("/join");
+  const isPublic =
+    pathname === "/" || pathname.startsWith("/join") || pathname.startsWith("/e/");
   const isAdmin = pathname.startsWith("/admin");
 
   // Avoid mounting protected pages (and their API calls) before session hydrate.

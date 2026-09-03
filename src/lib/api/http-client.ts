@@ -103,6 +103,73 @@ export async function activateAccount(body: {
   );
 }
 
+export async function patchMyProfile(body: {
+  name?: string;
+  email?: string;
+  company?: string;
+  designation?: string;
+  mobile?: string;
+  loginPin?: string;
+}): Promise<AuthSession> {
+  return apiFetch<AuthSession>("/api/auth/me", {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function fetchMyProfile(): Promise<AuthSession> {
+  return apiFetch<AuthSession>("/api/auth/me");
+}
+
+export type PublicExhibitor = {
+  name: string;
+  email: string;
+  company?: string | null;
+  designation?: string | null;
+  mobile?: string | null;
+  interests: string[];
+};
+
+export async function fetchPublicExhibitor(token: string): Promise<PublicExhibitor> {
+  return apiFetch<PublicExhibitor>(
+    `/api/public/exhibitors/${encodeURIComponent(token)}`,
+    undefined,
+    false,
+  );
+}
+
+export async function submitPublicLead(
+  token: string,
+  body: {
+    name: string;
+    company?: string;
+    designation?: string;
+    mobile?: string;
+    email?: string;
+    city?: string;
+    interests?: string[];
+    captureSource?: "qr" | "card" | "manual";
+    ocrText?: string;
+  },
+): Promise<UpsertLeadResponse> {
+  return apiFetch<UpsertLeadResponse>(
+    `/api/public/exhibitors/${encodeURIComponent(token)}/leads`,
+    { method: "POST", body: JSON.stringify(body) },
+    false,
+  );
+}
+
+export async function analyzePublicCard(
+  token: string,
+  body: { imageBase64: string; mimeType?: string; ocrText?: string },
+): Promise<AnalyzeCardResponse> {
+  return apiFetch<AnalyzeCardResponse>(
+    `/api/public/exhibitors/${encodeURIComponent(token)}/analyze-card`,
+    { method: "POST", body: JSON.stringify(body) },
+    false,
+  );
+}
+
 export async function startInvite(fresh = false): Promise<InvitePin> {
   return apiFetch<InvitePin>("/api/admin/invite", {
     method: "POST",
@@ -129,6 +196,9 @@ export async function patchAdminUser(
     role?: AuthUser["role"];
     name?: string;
     email?: string;
+    company?: string;
+    designation?: string;
+    mobile?: string;
     loginPin?: string;
   },
 ): Promise<AuthUser> {

@@ -59,6 +59,10 @@ export type AuthUser = {
   email: string;
   role: "Rep" | "Admin";
   status: "active" | "disabled";
+  company?: string | null;
+  designation?: string | null;
+  mobile?: string | null;
+  shareToken?: string | null;
   createdAt?: string | null;
   activatedAt?: string | null;
   leadsCaptured?: number;
