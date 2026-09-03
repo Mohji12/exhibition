@@ -34,10 +34,8 @@ CREATE TABLE IF NOT EXISTS invites (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 """
 
-_SAMPLE_REPS = [
-    ("Priya S.", "priya@conninter.example", "1111"),
-    ("Ditto", "ditto@conninter.example", "2222"),
-]
+_DEMO_LEAD_IDS = ("1", "2", "3", "4", "5")
+_DEMO_APPOINTMENT_IDS = ("a1", "a2", "a3")
 
 
 def _column_exists(cur, table: str, column: str) -> bool:
@@ -94,25 +92,48 @@ def _ensure_user(cur, name: str, email: str, pin: str, role: str) -> str:
     return user_id
 
 
-def _attribute_sample_leads(cur, ditto_id: str, priya_id: str) -> None:
-    # Assign demo seed leads (if present) so admin filters have data.
-    assignments = [
-        ("1", ditto_id, "qr"),
-        ("2", ditto_id, "card"),
-        ("5", ditto_id, "manual"),
-        ("3", priya_id, "qr"),
-        ("4", priya_id, "manual"),
-    ]
-    for lead_id, user_id, source in assignments:
+def _purge_demo_data(cur, keep_admin_email: str) -> None:
+    """Remove mock seed rows. Keep the bootstrap admin and real staff/leads."""
+    cur.execute(
+        "DELETE FROM lead_interests WHERE lead_id IN ("
+        + ",".join(["%s"] * len(_DEMO_LEAD_IDS))
+        + ")",
+        _DEMO_LEAD_IDS,
+    )
+    if _column_exists(cur, "lead_card_images", "lead_id"):
         cur.execute(
-            """
-            UPDATE leads
-            SET captured_by = COALESCE(captured_by, %s),
-                capture_source = COALESCE(capture_source, %s)
-            WHERE id = %s
-            """,
-            (user_id, source, lead_id),
+            "DELETE FROM lead_card_images WHERE lead_id IN ("
+            + ",".join(["%s"] * len(_DEMO_LEAD_IDS))
+            + ")",
+            _DEMO_LEAD_IDS,
         )
+    cur.execute(
+        "DELETE FROM leads WHERE id IN (" + ",".join(["%s"] * len(_DEMO_LEAD_IDS)) + ")",
+        _DEMO_LEAD_IDS,
+    )
+    cur.execute("DELETE FROM leads WHERE email LIKE %s", ("%.example",))
+    cur.execute(
+        "DELETE FROM appointments WHERE id IN ("
+        + ",".join(["%s"] * len(_DEMO_APPOINTMENT_IDS))
+        + ")",
+        _DEMO_APPOINTMENT_IDS,
+    )
+    cur.execute(
+        "SELECT id FROM users WHERE LOWER(email) <> %s AND email LIKE %s",
+        (keep_admin_email.lower(), "%@conninter.example"),
+    )
+    demo_ids = [row["id"] for row in cur.fetchall()]
+    if demo_ids:
+        id_ph = ",".join(["%s"] * len(demo_ids))
+        cur.execute(f"UPDATE leads SET captured_by = NULL WHERE captured_by IN ({id_ph})", demo_ids)
+        if _column_exists(cur, "lead_card_images", "captured_by"):
+            cur.execute(
+                f"UPDATE lead_card_images SET captured_by = NULL WHERE captured_by IN ({id_ph})",
+                demo_ids,
+            )
+        cur.execute(f"DELETE FROM invites WHERE created_by IN ({id_ph})", demo_ids)
+        cur.execute(f"DELETE FROM users WHERE id IN ({id_ph})", demo_ids)
+        logger.info("Removed %s demo user(s)", len(demo_ids))
 
 
 _CREATE_CARD_IMAGES = """
@@ -167,16 +188,7 @@ def bootstrap_auth() -> None:
         conn.commit()
 
         _ensure_user(cur, name, email, pin, "Admin")
-
-        sample_ids: dict[str, str] = {}
-        for rep_name, rep_email, rep_pin in _SAMPLE_REPS:
-            sample_ids[rep_email] = _ensure_user(cur, rep_name, rep_email, rep_pin, "Rep")
-
         _ensure_captured_by(cur)
         _ensure_card_images(cur)
-        _attribute_sample_leads(
-            cur,
-            sample_ids["ditto@conninter.example"],
-            sample_ids["priya@conninter.example"],
-        )
+        _purge_demo_data(cur, email)
         conn.commit()
