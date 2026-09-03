@@ -191,9 +191,12 @@ function LeadDetailPage() {
           transcript: lead.captureMeta?.transcript,
         },
         synced: false,
-      });
-      toast.success(`${lead.name} saved`, {
-        description: "Synced to Conninter database",
+      }).then((saved) => {
+        toast.success(`${lead.name} saved`, {
+          description: saved.synced
+            ? "Synced to Conninter database"
+            : "Saved offline — will sync when connection returns",
+        });
       });
       navigate({ to: schedule ? "/schedule" : "/leads" });
     } catch {
@@ -210,7 +213,10 @@ function LeadDetailPage() {
       <div className="flex items-start gap-2 rounded-xl bg-primary-soft px-3.5 py-2.5 text-xs text-primary">
         <Info className="mt-0.5 size-3.5 shrink-0" />
         {captureSource === "qr" && "Auto-filled from QR scan — please verify"}
-        {captureSource === "card" && "Auto-filled from card OCR — please verify"}
+        {captureSource === "card" &&
+          (lead.captureMeta?.aiVerifiedAt
+            ? "Auto-filled by AI card scan — please verify"
+            : "Auto-filled from card OCR — please verify")}
         {(!captureSource || captureSource === "manual") && "Enter visitor details below"}
       </div>
 

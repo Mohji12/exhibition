@@ -1,9 +1,14 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.database import get_connection
 from app.schemas import InterestNameRequest, ManageInterestResponse
+from app.security import require_admin
 
-router = APIRouter(prefix="/api/interests", tags=["interests"])
+router = APIRouter(
+    prefix="/api/interests",
+    tags=["interests"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 @router.post("", response_model=ManageInterestResponse)

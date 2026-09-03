@@ -8,8 +8,11 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+backend/.venv/
+.venv/
 __pycache__/
 *.py[cod]
+backend/tests/fixtures/last-export.xlsx
 test-results/
 .lovable/
 .vercel/

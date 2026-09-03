@@ -11,6 +11,7 @@ import { type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { Toaster } from "@/components/ui/sonner";
+import { AuthGate, AuthProvider } from "@/lib/auth";
 import { StoreProvider } from "@/lib/store";
 
 function NotFoundComponent() {
@@ -128,11 +129,15 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <StoreProvider>
-        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-        <Outlet />
-        <Toaster />
-      </StoreProvider>
+      <AuthProvider>
+        <AuthGate>
+          <StoreProvider>
+            {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+            <Outlet />
+            <Toaster />
+          </StoreProvider>
+        </AuthGate>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

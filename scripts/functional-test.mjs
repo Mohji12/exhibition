@@ -261,16 +261,50 @@ assert("Apply sync results marks ids synced", afterApply.find((l) => l.id === "3
 console.log("\n=== FastAPI backend tests ===\n");
 
 const API_BASE = process.env.TEST_API_URL ?? (process.env.VITE_API_URL || "http://localhost:8000");
+const ADMIN_EMAIL = process.env.AUTH_BOOTSTRAP_EMAIL || "admin@conninter.example";
+const ADMIN_PIN = process.env.AUTH_BOOTSTRAP_PIN || "2026";
+
+function authHeaders(token) {
+  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+}
 
 try {
   const health = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(3000) });
   assert("FastAPI health", health.ok, `status ${health.status}`);
 
-  const seedRes = await fetch(`${API_BASE}/api/seed`, { signal: AbortSignal.timeout(5000) });
+  const unauthSeed = await fetch(`${API_BASE}/api/seed`, { signal: AbortSignal.timeout(5000) });
+  assert("Seed rejects unauthenticated", unauthSeed.status === 401, `status ${unauthSeed.status}`);
+
+  const badLogin = await fetch(`${API_BASE}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: ADMIN_EMAIL, pin: "0000" }),
+    signal: AbortSignal.timeout(5000),
+  });
+  assert("Login rejects bad PIN", badLogin.status === 401, `status ${badLogin.status}`);
+
+  const loginRes = await fetch(`${API_BASE}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: ADMIN_EMAIL, pin: ADMIN_PIN }),
+    signal: AbortSignal.timeout(5000),
+  });
+  const loginBody = await loginRes.json();
+  assert(
+    "Admin login",
+    loginRes.ok && loginBody.token && loginBody.user?.role === "Admin",
+    loginBody.detail ?? `status ${loginRes.status}`,
+  );
+  const token = loginBody.token;
+
+  const seedRes = await fetch(`${API_BASE}/api/seed`, {
+    headers: authHeaders(token),
+    signal: AbortSignal.timeout(5000),
+  });
   assert("FastAPI seed endpoint", seedRes.ok, `status ${seedRes.status}`);
   const seed = await seedRes.json();
 
-  assert("Seed: 5 leads", seed?.leads?.length === 5, `found ${seed?.leads?.length ?? 0}`);
+  assert("Seed: at least 5 leads", (seed?.leads?.length ?? 0) >= 5, `found ${seed?.leads?.length ?? 0}`);
   assert(
     "Seed: 3 appointments",
     seed?.appointments?.length === 3,
@@ -281,7 +315,13 @@ try {
     seed?.interests?.length === 6,
     `found ${seed?.interests?.length ?? 0}`,
   );
-  assert("Seed: 3 team members", seed?.team?.length === 3, `found ${seed?.team?.length ?? 0}`);
+  assert(
+    "Seed: team includes admin",
+    Array.isArray(seed?.team) &&
+      seed.team.length >= 1 &&
+      seed.team.some((m) => m.email === ADMIN_EMAIL),
+    `found ${seed?.team?.length ?? 0}`,
+  );
 
   const hotCount = seed.leads.filter((l) => l.priority === "hot").length;
   assert("Seed: 2 hot leads", hotCount === 2, `found ${hotCount}`);
@@ -318,7 +358,7 @@ try {
 
   const upsertRes = await fetch(`${API_BASE}/api/leads`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders(token),
     body: JSON.stringify(testLead),
     signal: AbortSignal.timeout(5000),
   });
@@ -326,8 +366,249 @@ try {
   assert(
     "Persistence: insert lead",
     upsertRes.ok && upsertBody.ok && upsertBody.lead?.name === "Test Persist",
-    upsertBody.error ?? `status ${upsertRes.status}`,
+    upsertBody.error ?? upsertBody.detail ?? `status ${upsertRes.status}`,
   );
+
+  const inviteRes = await fetch(`${API_BASE}/api/admin/invite`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ fresh: true }),
+    signal: AbortSignal.timeout(5000),
+  });
+  const invite1 = await inviteRes.json();
+  assert(
+    "Invite QR created",
+    inviteRes.ok && invite1.token && /^\d{4}$/.test(invite1.pin),
+    invite1.detail ?? `status ${inviteRes.status}`,
+  );
+
+  const lookupRes = await fetch(`${API_BASE}/api/auth/invite/${invite1.token}`, {
+    signal: AbortSignal.timeout(5000),
+  });
+  const lookupBody = await lookupRes.json();
+  assert("Invite lookup public", lookupRes.ok && lookupBody.ok);
+
+  const refreshRes = await fetch(`${API_BASE}/api/admin/invite/refresh`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: "{}",
+    signal: AbortSignal.timeout(5000),
+  });
+  const invite2 = await refreshRes.json();
+  assert(
+    "PIN rotates on refresh",
+    refreshRes.ok && invite2.token === invite1.token && invite2.pin !== invite1.pin,
+    `token match ${invite2.token === invite1.token}, pins ${invite1.pin} -> ${invite2.pin}`,
+  );
+
+  const stamp = Date.now();
+  const newEmail = `rep.${stamp}@conninter.example`;
+  const staleActivate = await fetch(`${API_BASE}/api/auth/activate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      token: invite1.token,
+      pin: invite1.pin,
+      name: "Stale Pin Rep",
+      email: `stale.${stamp}@conninter.example`,
+      loginPin: "1357",
+    }),
+    signal: AbortSignal.timeout(5000),
+  });
+  assert("Activate rejects old PIN", staleActivate.status === 401, `status ${staleActivate.status}`);
+
+  const activateRes = await fetch(`${API_BASE}/api/auth/activate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      token: invite2.token,
+      pin: invite2.pin,
+      name: "Test Rep",
+      email: newEmail,
+      loginPin: "2468",
+    }),
+    signal: AbortSignal.timeout(5000),
+  });
+  const activateBody = await activateRes.json();
+  assert(
+    "Activate with current PIN",
+    activateRes.ok && activateBody.user?.role === "Rep" && activateBody.token,
+    activateBody.detail ?? `status ${activateRes.status}`,
+  );
+
+  const dupActivate = await fetch(`${API_BASE}/api/auth/activate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      token: invite2.token,
+      pin: invite2.pin,
+      name: "Test Rep 2",
+      email: newEmail,
+      loginPin: "2468",
+    }),
+    signal: AbortSignal.timeout(5000),
+  });
+  assert("Activate rejects duplicate email", dupActivate.status === 409, `status ${dupActivate.status}`);
+
+  const overviewRes = await fetch(`${API_BASE}/api/admin/overview`, {
+    headers: authHeaders(token),
+    signal: AbortSignal.timeout(5000),
+  });
+  const overview = await overviewRes.json();
+  assert(
+    "Admin overview expanded",
+    overviewRes.ok &&
+      overview.staffActive >= 2 &&
+      overview.leads >= 5 &&
+      typeof overview.warmLeads === "number" &&
+      typeof overview.syncedLeads === "number" &&
+      overview.bySource &&
+      Array.isArray(overview.topInterests) &&
+      overview.appointmentsByStatus,
+    overview.detail ?? JSON.stringify(overview),
+  );
+
+  const usersRes = await fetch(`${API_BASE}/api/admin/users`, {
+    headers: authHeaders(token),
+    signal: AbortSignal.timeout(5000),
+  });
+  const users = await usersRes.json();
+  const priya = users.find((u) => u.email === "priya@conninter.example");
+  const ditto = users.find((u) => u.email === "ditto@conninter.example");
+  assert(
+    "Sample reps exist with lead counts",
+    usersRes.ok && priya && ditto && typeof priya.leadsCaptured === "number",
+    JSON.stringify({ priya, ditto }),
+  );
+
+  const priyaLogin = await fetch(`${API_BASE}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "priya@conninter.example", pin: "1111" }),
+    signal: AbortSignal.timeout(5000),
+  });
+  const priyaBody = await priyaLogin.json();
+  assert("Priya sample login", priyaLogin.ok && priyaBody.token, priyaBody.detail);
+  const priyaToken = priyaBody.token;
+  const priyaId = priyaBody.user.id;
+
+  const attrId = `attr-${Date.now()}`;
+  const attrLead = {
+    id: attrId,
+    name: "Attributed Lead",
+    company: "Attr Hospital",
+    designation: "CMO",
+    mobile: "+91 9333333333",
+    email: `attr.${Date.now()}@conninter.example`,
+    city: "Chennai",
+    priority: "hot",
+    interests: ["Diagnostics"],
+    summary: "Attribution test",
+    synced: false,
+    capturedAt: "Today, attr",
+    captureSource: "qr",
+  };
+  const attrRes = await fetch(`${API_BASE}/api/leads`, {
+    method: "POST",
+    headers: authHeaders(priyaToken),
+    body: JSON.stringify(attrLead),
+    signal: AbortSignal.timeout(5000),
+  });
+  const attrBody = await attrRes.json();
+  assert(
+    "Lead stamped with capturer",
+    attrRes.ok && attrBody.ok && attrBody.lead?.capturedBy === priyaId,
+    attrBody.error ?? attrBody.detail ?? JSON.stringify(attrBody.lead),
+  );
+
+  const filtered = await fetch(
+    `${API_BASE}/api/admin/leads?capturedBy=${encodeURIComponent(priyaId)}&priority=hot`,
+    { headers: authHeaders(token), signal: AbortSignal.timeout(5000) },
+  );
+  const filteredLeads = await filtered.json();
+  assert(
+    "Admin leads filter by capturer",
+    filtered.ok &&
+      Array.isArray(filteredLeads) &&
+      filteredLeads.some((l) => l.id === attrId) &&
+      filteredLeads.every((l) => l.capturedBy === priyaId),
+    `count ${filteredLeads?.length}`,
+  );
+
+  const exportRes = await fetch(`${API_BASE}/api/admin/leads/export?capturedBy=${encodeURIComponent(priyaId)}`, {
+    headers: authHeaders(token),
+    signal: AbortSignal.timeout(5000),
+  });
+  const csvText = await exportRes.text();
+  assert(
+    "Admin leads CSV export",
+    exportRes.ok && csvText.includes("Attributed Lead") && csvText.includes("name,"),
+    csvText.slice(0, 120),
+  );
+
+  const delRes = await fetch(`${API_BASE}/api/admin/leads/${encodeURIComponent(attrId)}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+    signal: AbortSignal.timeout(5000),
+  });
+  assert("Admin delete lead", delRes.ok, `status ${delRes.status}`);
+
+  const apptsRes = await fetch(`${API_BASE}/api/admin/appointments`, {
+    headers: authHeaders(token),
+    signal: AbortSignal.timeout(5000),
+  });
+  const appts = await apptsRes.json();
+  assert("Admin appointments list", apptsRes.ok && appts.length >= 3, `count ${appts?.length}`);
+  const targetAppt = appts.find((a) => a.id === "a2") ?? appts[0];
+  const patchAppt = await fetch(`${API_BASE}/api/admin/appointments/${encodeURIComponent(targetAppt.id)}`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify({ status: "Rescheduled" }),
+    signal: AbortSignal.timeout(5000),
+  });
+  const patchedAppt = await patchAppt.json();
+  assert(
+    "Admin patch appointment status",
+    patchAppt.ok && patchedAppt.status === "Rescheduled",
+    patchedAppt.detail ?? JSON.stringify(patchedAppt),
+  );
+  // restore pending for seed consistency of other checks if a2
+  if (targetAppt.id === "a2") {
+    await fetch(`${API_BASE}/api/admin/appointments/a2`, {
+      method: "PATCH",
+      headers: authHeaders(token),
+      body: JSON.stringify({ status: "Pending" }),
+      signal: AbortSignal.timeout(5000),
+    });
+  }
+
+  const repInterest = await fetch(`${API_BASE}/api/interests`, {
+    method: "POST",
+    headers: authHeaders(priyaToken),
+    body: JSON.stringify({ name: `BlockedTag-${Date.now()}` }),
+    signal: AbortSignal.timeout(5000),
+  });
+  assert("Rep cannot add interest", repInterest.status === 403, `status ${repInterest.status}`);
+
+  const adminTag = `AdminTag-${Date.now()}`;
+  const adminInterest = await fetch(`${API_BASE}/api/interests`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ name: adminTag }),
+    signal: AbortSignal.timeout(5000),
+  });
+  const adminInterestBody = await adminInterest.json();
+  assert(
+    "Admin can add interest",
+    adminInterest.ok && adminInterestBody.ok,
+    adminInterestBody.error ?? `status ${adminInterest.status}`,
+  );
+  await fetch(`${API_BASE}/api/interests/remove`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ name: adminTag }),
+    signal: AbortSignal.timeout(5000),
+  });
 } catch (err) {
   fail("FastAPI backend", err instanceof Error ? err.message : String(err));
   console.log(
@@ -340,6 +621,7 @@ console.log("\n=== Route smoke tests (dev server) ===\n");
 const BASE = process.env.TEST_BASE_URL ?? "http://localhost:8080";
 const routes = [
   "/",
+  "/join",
   "/capture",
   "/capture/qr",
   "/capture/card",
@@ -348,6 +630,9 @@ const routes = [
   "/schedule",
   "/card",
   "/profile",
+  "/admin",
+  "/admin/leads",
+  "/admin/followups",
 ];
 
 const routeAssertions = {

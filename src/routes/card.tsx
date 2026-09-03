@@ -3,7 +3,7 @@ import { Eye, Mail, MessageCircle, MessageSquare, QrCode, Stethoscope } from "lu
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
-import { useStore } from "@/lib/store";
+import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/card")({
   head: () => ({
@@ -32,8 +32,8 @@ const SHARE = [
 ] as const;
 
 function CardPage() {
-  const { team, seedSource } = useStore();
-  const rep = team.find((member) => member.role === "Rep") ?? team[0];
+  const { session } = useAuth();
+  const user = session?.user;
 
   return (
     <AppShell title="My card" subtitle="Share your details in one tap">
@@ -50,20 +50,16 @@ function CardPage() {
 
         <div className="mt-6 flex items-end justify-between gap-4">
           <div>
-            {rep ? (
+            {user ? (
               <>
-                <p className="text-xl font-semibold">{rep.name}</p>
-                <p className="text-xs text-primary-foreground/80">{rep.role}</p>
+                <p className="text-xl font-semibold">{user.name}</p>
+                <p className="text-xs text-primary-foreground/80">{user.role}</p>
                 <div className="mt-3 space-y-0.5 text-xs text-primary-foreground/90">
-                  <p>{rep.email}</p>
+                  <p>{user.email}</p>
                 </div>
               </>
             ) : (
-              <p className="text-sm text-primary-foreground/85">
-                {seedSource === "loading"
-                  ? "Loading team profile…"
-                  : "No team profile loaded from the backend yet."}
-              </p>
+              <p className="text-sm text-primary-foreground/85">Sign in to see your card.</p>
             )}
           </div>
           <div className="grid size-24 shrink-0 place-items-center rounded-xl bg-card text-primary">

@@ -1,6 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { ShieldCheck, Stethoscope } from "lucide-react";
+import { loginRequest } from "@/lib/api/http-client";
+import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,8 +28,11 @@ export const Route = createFileRoute("/")({
 
 function LoginPage() {
   const navigate = useNavigate();
+  const { setSession } = useAuth();
   const [email, setEmail] = useState("");
   const [pin, setPin] = useState("");
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[image:var(--gradient-brand)] px-5 py-10">
@@ -54,7 +59,17 @@ function LoginPage() {
           className="mt-6 space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
-            navigate({ to: "/capture" });
+            setError("");
+            setPending(true);
+            void loginRequest(email.trim(), pin)
+              .then((session) => {
+                setSession(session);
+                void navigate({ to: session.user.role === "Admin" ? "/admin" : "/capture" });
+              })
+              .catch((err: unknown) => {
+                setError(err instanceof Error ? err.message : "Sign in failed");
+              })
+              .finally(() => setPending(false));
           }}
         >
           <div className="space-y-1.5">
@@ -62,9 +77,11 @@ function LoginPage() {
             <Input
               id="email"
               type="email"
+              autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@conninter.com"
+              required
             />
           </div>
           <div className="space-y-1.5">
@@ -73,15 +90,22 @@ function LoginPage() {
               id="pin"
               type="password"
               inputMode="numeric"
+              autoComplete="current-password"
+              maxLength={4}
               value={pin}
-              onChange={(e) => setPin(e.target.value)}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
               placeholder="••••"
+              required
             />
           </div>
-          <Button type="submit" className="h-11 w-full rounded-xl text-base">
-            Sign in
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          <Button type="submit" className="h-11 w-full rounded-xl text-base" disabled={pending || pin.length !== 4}>
+            {pending ? "Signing in…" : "Sign in"}
           </Button>
         </form>
+        <p className="mt-4 text-center text-xs text-muted-foreground">
+          New to the booth? Scan the admin QR to activate your account.
+        </p>
       </div>
     </div>
   );

@@ -1,13 +1,24 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.bootstrap import bootstrap_auth
 from app.config import settings
-from app.routers import appointments, interests, leads, seed
+from app.routers import admin, appointments, auth, capture, interests, leads, seed
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    bootstrap_auth()
+    yield
+
 
 app = FastAPI(
     title="Conninter Visitor Book API",
     description="FastAPI backend for the Conninter exhibition lead-capture app",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -19,6 +30,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
+app.include_router(admin.router)
+app.include_router(capture.router)
 app.include_router(seed.router)
 app.include_router(leads.router)
 app.include_router(appointments.router)

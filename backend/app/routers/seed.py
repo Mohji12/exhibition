@@ -1,14 +1,15 @@
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.database import get_connection
 from app.mappers import LEAD_SELECT_SQL, map_appointment_row, map_lead_row, map_team_row
 from app.schemas import SeedData
+from app.security import require_user
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api", tags=["seed"])
+router = APIRouter(prefix="/api", tags=["seed"], dependencies=[Depends(require_user)])
 
 
 @router.get("/seed", response_model=SeedData | None)
@@ -26,7 +27,13 @@ def fetch_seed_data() -> SeedData | None:
             )
             appointments = [map_appointment_row(row) for row in cur.fetchall()]
 
-            cur.execute("SELECT name, role, email FROM team_members ORDER BY id")
+            cur.execute(
+                """
+                SELECT name, role, email FROM users
+                WHERE status = 'active'
+                ORDER BY created_at
+                """
+            )
             team = [map_team_row(row) for row in cur.fetchall()]
 
         return SeedData(
