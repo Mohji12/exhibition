@@ -181,6 +181,9 @@ def activate(body: ActivateRequest) -> AuthResponse:
         cur.execute(f"SELECT {_USER_COLS} FROM users WHERE id = %s", (user_id,))
         row = cur.fetchone()
 
+    if mail_configured():
+        send_pin_email(email, name, body.login_pin)
+
     return _auth_response(row)
 
 
