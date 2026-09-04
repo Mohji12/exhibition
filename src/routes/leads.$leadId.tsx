@@ -198,7 +198,7 @@ function LeadDetailPage() {
         ...parsed.data,
         captureSource: captureSource ?? "manual",
         captureMeta: {
-          ...lead.captureMeta,
+          ...parsed.data.captureMeta,
           verifiedAt: new Date().toISOString(),
         },
         synced: false,

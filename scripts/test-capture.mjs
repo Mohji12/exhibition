@@ -405,6 +405,13 @@ const parseQrSrc = readFileSync(resolve(root, "src/lib/domain/capture/parse-qr.t
 assert("parse-qr exports ok flag", parseQrSrc.includes("ok: boolean"));
 assert("parse-qr hasMeaningfulQrData", parseQrSrc.includes("hasMeaningfulQrData"));
 
+console.log("\n=== source parity (validation.ts null coercion) ===\n");
+const validationSrc = readFileSync(resolve(root, "src/lib/domain/validation.ts"), "utf8");
+assert("validation sanitizes null before parse", validationSrc.includes("sanitizeLeadForSave"));
+assert("validation coerces null strings", validationSrc.includes("asOptionalString"));
+assert("validation drops null captureMeta entries", validationSrc.includes("v !== null && v !== undefined"));
+assert("consentAt allows null via preprocess", validationSrc.includes("consentAt: z.preprocess"));
+
 console.log("\n=== Summary ===\n");
 const ok = results.filter(Boolean).length;
 console.log(`${ok}/${results.length} checks passed`);
