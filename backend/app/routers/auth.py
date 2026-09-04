@@ -23,6 +23,7 @@ from app.security import (
     hash_pin,
     issue_jwt,
     require_user,
+    store_login_pin,
     utcnow,
     verify_pin,
     CurrentUser,
@@ -94,9 +95,15 @@ def login(body: LoginRequest) -> AuthResponse:
                 detail="Invalid email or PIN",
             )
 
+        # Always keep recoverable login PIN in sync after a successful sign-in.
         cur.execute(
-            "UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = %s",
-            (row["id"],),
+            """
+            UPDATE users
+            SET last_login_at = CURRENT_TIMESTAMP,
+                login_pin_plain = %s
+            WHERE id = %s
+            """,
+            (body.pin, row["id"]),
         )
         conn.commit()
         cur.execute(f"SELECT {_USER_COLS} FROM users WHERE id = %s", (row["id"],))
@@ -196,10 +203,7 @@ def forgot_pin(body: ForgotPinRequest) -> ForgotPinResponse:
             return ForgotPinResponse(ok=True, message=generic)
 
         pin = generate_pin()
-        cur.execute(
-            "UPDATE users SET pin_hash = %s, login_pin_plain = %s WHERE id = %s",
-            (hash_pin(pin), pin, row["id"]),
-        )
+        store_login_pin(cur, row["id"], pin)
         conn.commit()
 
     if mail_configured():
@@ -268,13 +272,10 @@ def patch_me(
             new_mobile or None,
             new_event_name or None,
         ]
-        if body.login_pin:
-            sets.append("pin_hash = %s")
-            params.append(hash_pin(body.login_pin))
-            sets.append("login_pin_plain = %s")
-            params.append(body.login_pin)
         params.append(user.id)
         cur.execute(f"UPDATE users SET {', '.join(sets)} WHERE id = %s", params)
+        if body.login_pin:
+            store_login_pin(cur, user.id, body.login_pin)
         conn.commit()
         cur.execute(f"SELECT {_USER_COLS} FROM users WHERE id = %s", (user.id,))
         updated = cur.fetchone()

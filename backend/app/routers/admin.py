@@ -34,6 +34,7 @@ from app.security import (
     generate_token,
     hash_pin,
     require_admin,
+    store_login_pin,
     utcnow,
 )
 from app.services.mail import mail_configured, send_pin_email
@@ -389,13 +390,10 @@ def patch_user(
             new_mobile or None,
             new_event_name or None,
         ]
-        if body.login_pin:
-            sets.append("pin_hash = %s")
-            params.append(hash_pin(body.login_pin))
-            sets.append("login_pin_plain = %s")
-            params.append(body.login_pin)
         params.append(user_id)
         cur.execute(f"UPDATE users SET {', '.join(sets)} WHERE id = %s", params)
+        if body.login_pin:
+            store_login_pin(cur, user_id, body.login_pin)
         conn.commit()
         updated = _get_user_row(cur, user_id)
 
@@ -421,10 +419,7 @@ def reset_user_pin(
         row = _get_user_row(cur, user_id)
         if not row:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-        cur.execute(
-            "UPDATE users SET pin_hash = %s, login_pin_plain = %s WHERE id = %s",
-            (hash_pin(pin), pin, user_id),
-        )
+        store_login_pin(cur, user_id, pin)
         conn.commit()
         updated = _get_user_row(cur, user_id)
 

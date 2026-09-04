@@ -48,6 +48,14 @@ def verify_pin(pin: str, pin_hash: str) -> bool:
         return False
 
 
+def store_login_pin(cur, user_id: str, pin: str) -> None:
+    """Persist both the hash (for auth) and recoverable plain PIN (for admin)."""
+    cur.execute(
+        "UPDATE users SET pin_hash = %s, login_pin_plain = %s WHERE id = %s",
+        (hash_pin(pin), pin, user_id),
+    )
+
+
 def generate_pin() -> str:
     return f"{secrets.randbelow(10000):04d}"
 
