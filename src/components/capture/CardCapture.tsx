@@ -10,7 +10,12 @@ import {
   deletePendingCardImage,
   putPendingCardImage,
 } from "@/lib/domain/capture/card-image-store";
-import { saveLeadDraft } from "@/lib/domain/capture/draft";
+import {
+  clearRecaptureBase,
+  loadRecaptureBase,
+  mergeVoiceMeta,
+  saveLeadDraft,
+} from "@/lib/domain/capture/draft";
 import { averageConfidence, parseBusinessCardText } from "@/lib/domain/capture/parse-ocr";
 import { verifyCapturedLead } from "@/lib/domain/capture/verify-capture";
 import { createEmptyLead } from "@/lib/domain/leads";
@@ -64,7 +69,11 @@ function mergeCardFields(front: CardPreview, back?: CardPreview | null): CardPre
   };
 }
 
-export function CardCapture() {
+type CardCaptureProps = {
+  recaptureLeadId?: string;
+};
+
+export function CardCapture({ recaptureLeadId }: CardCaptureProps) {
   const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -75,8 +84,12 @@ export function CardCapture() {
   const [progress, setProgress] = useState<number | null>(null);
   const [statusLabel, setStatusLabel] = useState<string | null>(null);
   const [parsedPreview, setParsedPreview] = useState<CardPreview | null>(null);
-  const [draftLeadId, setDraftLeadId] = useState<string | undefined>();
+  const [draftLeadId, setDraftLeadId] = useState<string | undefined>(recaptureLeadId);
   const [awaitingBackChoice, setAwaitingBackChoice] = useState(false);
+
+  useEffect(() => {
+    if (recaptureLeadId) setDraftLeadId(recaptureLeadId);
+  }, [recaptureLeadId]);
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -329,17 +342,19 @@ export function CardCapture() {
 
   const continueToForm = async () => {
     if (!parsedPreview) return;
-    const base = createEmptyLead();
-    const leadId = draftLeadId ?? parsedPreview.lead.id ?? base.id;
+    const recaptureBase = loadRecaptureBase();
+    const base = recaptureBase ?? createEmptyLead();
+    const leadId =
+      recaptureLeadId ?? draftLeadId ?? parsedPreview.lead.id ?? recaptureBase?.id ?? base.id;
+    const returnLeadId = recaptureBase || recaptureLeadId ? leadId : "new";
 
     let frontId = front?.imageId;
     let backId = back?.imageId;
     if (front?.backupPromise) frontId = (await front.backupPromise) ?? frontId;
     if (back?.backupPromise) backId = (await back.backupPromise) ?? backId;
 
-    const merged = {
+    const merged: Lead = {
       ...base,
-      ...parsedPreview.lead,
       id: leadId,
       name: sanitizeText(parsedPreview.lead.name) || "",
       company: sanitizeText(parsedPreview.lead.company) || "",
@@ -347,25 +362,35 @@ export function CardCapture() {
       mobile: sanitizeText(parsedPreview.lead.mobile) || "",
       email: sanitizeText(parsedPreview.lead.email) || "",
       city: sanitizeText(parsedPreview.lead.city) || "",
+      interests: base.interests,
+      priority: base.priority,
+      summary: base.summary,
+      synced: false,
       fieldConfidence: parsedPreview.confidence,
     };
+    if (base.consentAt) merged.consentAt = base.consentAt;
+
     const ocrConfidence = averageConfidence(parsedPreview.confidence);
     verifyCapturedLead(merged, { fieldConfidence: parsedPreview.confidence });
 
-    const captureMeta: CaptureMeta = {
+    const nextMeta: CaptureMeta = {
       ocrText: parsedPreview.ocrText,
       ocrConfidence,
       verifiedAt: new Date().toISOString(),
-      fieldConfidence: parsedPreview.confidence as CaptureMeta["fieldConfidence"],
       processingNote: !frontId,
     };
-    if (frontId) captureMeta.cardImageId = frontId;
-    if (backId) captureMeta.cardImageIdBack = backId;
-    if (parsedPreview.source === "gemini") {
-      captureMeta.aiVerifiedAt = new Date().toISOString();
-      captureMeta.aiIssues = parsedPreview.aiIssues;
-      captureMeta.ocrQuality = parsedPreview.ocrQuality;
+    if (Object.keys(parsedPreview.confidence).length > 0) {
+      nextMeta.fieldConfidence = parsedPreview.confidence as CaptureMeta["fieldConfidence"];
     }
+    if (frontId) nextMeta.cardImageId = frontId;
+    if (backId) nextMeta.cardImageIdBack = backId;
+    if (parsedPreview.source === "gemini") {
+      nextMeta.aiVerifiedAt = new Date().toISOString();
+      nextMeta.aiIssues = parsedPreview.aiIssues;
+      if (parsedPreview.ocrQuality) nextMeta.ocrQuality = parsedPreview.ocrQuality;
+    }
+
+    const captureMeta = mergeVoiceMeta(base.captureMeta, nextMeta) ?? nextMeta;
 
     saveLeadDraft({
       lead: merged,
@@ -373,6 +398,7 @@ export function CardCapture() {
       captureMeta,
       fieldConfidence: parsedPreview.confidence,
     });
+    clearRecaptureBase();
 
     if (!frontId) {
       toast.message(
@@ -380,7 +406,15 @@ export function CardCapture() {
       );
     }
 
-    navigate({ to: "/leads/$leadId", params: { leadId: "new" }, search: { source: "card" } });
+    toast.success(recaptureBase || recaptureLeadId ? "Card re-captured" : "Card captured", {
+      description: "Review fields, then save the lead",
+    });
+
+    navigate({
+      to: "/leads/$leadId",
+      params: { leadId: returnLeadId },
+      search: { source: "card" },
+    });
   };
 
   const resetAll = () => {

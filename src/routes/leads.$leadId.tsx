@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Info } from "lucide-react";
+import { Camera, Info } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { AppShell } from "@/components/AppShell";
@@ -17,6 +17,7 @@ import {
   clearLeadDraft,
   loadLeadDraft,
   mergeDraftIntoLead,
+  saveRecaptureBase,
 } from "@/lib/domain/capture/draft";
 import {
   fieldStatusMap,
@@ -91,22 +92,35 @@ function LeadDetailPage() {
   const [saving, setSaving] = useState(false);
   const [customInterest, setCustomInterest] = useState("");
   const draftLoaded = useRef(false);
+  const preserveLocalRef = useRef(false);
 
   useEffect(() => {
     draftLoaded.current = false;
+    preserveLocalRef.current = false;
   }, [leadId]);
 
   useEffect(() => {
+    const draft = loadLeadDraft();
+    const draftMatches =
+      draft && (leadId === "new" || (draft.lead.id != null && draft.lead.id === leadId));
+
+    if (draftMatches && draft) {
+      const base =
+        leadId === "new"
+          ? createEmptyLead()
+          : (leads.find((l) => l.id === leadId) ?? createEmptyLead());
+      setLead(mergeDraftIntoLead(base, draft));
+      setCaptureSource(draft.captureSource);
+      clearLeadDraft();
+      draftLoaded.current = true;
+      preserveLocalRef.current = true;
+      return;
+    }
+
     if (leadId === "new") {
       if (draftLoaded.current) return;
 
-      const draft = loadLeadDraft();
-      if (draft) {
-        const base = createEmptyLead();
-        setLead(mergeDraftIntoLead(base, draft));
-        setCaptureSource(draft.captureSource);
-        clearLeadDraft();
-      } else if (source === "manual") {
+      if (source === "manual") {
         setLead(createEmptyLead());
         setCaptureSource("manual");
       } else if (source === "qr" || source === "card") {
@@ -126,20 +140,26 @@ function LeadDetailPage() {
 
     const existing = leads.find((l) => l.id === leadId);
     if (existing) {
-      setLead(existing);
-      setCaptureSource(existing.captureSource ?? source);
+      if (!preserveLocalRef.current) {
+        setLead(existing);
+        setCaptureSource(existing.captureSource ?? source);
+      }
+      draftLoaded.current = true;
       return;
     }
 
-    const { lead: fallback } = resolveLeadForRoute(leadId, leads);
-    setLead(fallback);
-    setCaptureSource(fallback.captureSource ?? source);
+    if (!preserveLocalRef.current) {
+      const { lead: fallback } = resolveLeadForRoute(leadId, leads);
+      setLead(fallback);
+      setCaptureSource(fallback.captureSource ?? source);
+    }
+    draftLoaded.current = true;
   }, [leadId, source, leads, seedSource, navigate]);
 
   const verification = useMemo(
     () =>
       verifyCapturedLead(lead, {
-        fieldConfidence: lead.fieldConfidence,
+        ...(lead.fieldConfidence ? { fieldConfidence: lead.fieldConfidence } : {}),
         existingLeads: leads,
       }),
     [lead, leads],
@@ -149,6 +169,15 @@ function LeadDetailPage() {
 
   const set = <K extends keyof Lead>(key: K, value: Lead[K]) =>
     setLead((prev) => ({ ...prev, [key]: value }));
+
+  const startRecapture = () => {
+    saveRecaptureBase(lead);
+    const target = captureSource === "qr" ? "/capture/qr" : "/capture/card";
+    navigate({
+      to: target,
+      search: { leadId: lead.id },
+    });
+  };
 
   const toggleInterest = (tag: string) =>
     setLead((prev) => ({
@@ -240,7 +269,29 @@ function LeadDetailPage() {
         {(!captureSource || captureSource === "manual") && "Enter visitor details below"}
       </div>
 
-      {showVerification && <VerificationPanel verification={verification} lead={lead} />}
+      {showVerification && (
+        <VerificationPanel
+          verification={verification}
+          lead={lead}
+          captureSource={captureSource}
+          onRecapture={startRecapture}
+        />
+      )}
+
+      {!showVerification && (
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-3 h-10 w-full rounded-xl text-xs font-semibold"
+          onClick={() => {
+            saveRecaptureBase(lead);
+            navigate({ to: "/capture/card", search: { leadId: lead.id } });
+          }}
+        >
+          <Camera className="size-3.5" />
+          Capture visiting card
+        </Button>
+      )}
 
       {(lead.captureMeta?.voiceStatus === "processing" ||
         lead.captureMeta?.voiceStatus === "saved" ||

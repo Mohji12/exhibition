@@ -1,7 +1,8 @@
-import { AlertCircle, CheckCircle2, AlertTriangle } from "lucide-react";
+import { AlertCircle, CheckCircle2, AlertTriangle, Camera, QrCode } from "lucide-react";
 import type { CaptureVerification, FieldStatus } from "@/lib/domain/capture/verify-capture";
-import type { Lead } from "@/lib/types";
+import type { CaptureSource, Lead } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 const STATUS_ICON: Record<FieldStatus, typeof CheckCircle2> = {
   ok: CheckCircle2,
@@ -18,9 +19,11 @@ const STATUS_STYLE: Record<FieldStatus, string> = {
 type Props = {
   verification: CaptureVerification;
   lead: Lead;
+  captureSource?: CaptureSource;
+  onRecapture?: () => void;
 };
 
-export function VerificationPanel({ verification, lead }: Props) {
+export function VerificationPanel({ verification, lead, captureSource, onRecapture }: Props) {
   const seen = new Set<string>();
   const uniqueFields = verification.fields.filter((f) => {
     if (seen.has(f.field)) return false;
@@ -47,9 +50,30 @@ export function VerificationPanel({ verification, lead }: Props) {
 
       {(aiVerified || ocrQuality) && (
         <p className="mt-2 text-[11px] text-muted-foreground">
-          {aiVerified ? "AI verified card fields" : "Local OCR"}
+          {aiVerified ? "AI verified card fields" : captureSource === "qr" ? "QR scan" : "Local OCR"}
           {ocrQuality ? ` · Image quality: ${ocrQuality}` : ""}
         </p>
+      )}
+
+      {onRecapture && (
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-3 h-10 w-full rounded-xl text-xs font-semibold"
+          onClick={onRecapture}
+        >
+          {captureSource === "qr" ? (
+            <>
+              <QrCode className="size-3.5" />
+              Re-scan QR
+            </>
+          ) : (
+            <>
+              <Camera className="size-3.5" />
+              Re-capture card
+            </>
+          )}
+        </Button>
       )}
 
       {aiIssues.length > 0 && (

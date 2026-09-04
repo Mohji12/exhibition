@@ -4,7 +4,12 @@ import { Html5Qrcode, Html5QrcodeScannerState } from "html5-qrcode";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { parseDelegateQr } from "@/lib/domain/capture/parse-qr";
-import { saveLeadDraft } from "@/lib/domain/capture/draft";
+import {
+  clearRecaptureBase,
+  loadRecaptureBase,
+  mergeVoiceMeta,
+  saveLeadDraft,
+} from "@/lib/domain/capture/draft";
 import { createEmptyLead } from "@/lib/domain/leads";
 import { verifyCapturedLead } from "@/lib/domain/capture/verify-capture";
 
@@ -26,7 +31,11 @@ async function safeStopScanner(scanner: Html5Qrcode | null): Promise<void> {
   }
 }
 
-export function QrScanner() {
+type QrScannerProps = {
+  recaptureLeadId?: string;
+};
+
+export function QrScanner({ recaptureLeadId }: QrScannerProps) {
   const navigate = useNavigate();
   const handledRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,36 +51,54 @@ export function QrScanner() {
       }
 
       handledRef.current = true;
-      const base = createEmptyLead();
+      const recaptureBase = loadRecaptureBase();
+      const base = recaptureBase ?? createEmptyLead();
+      const leadId = recaptureLeadId ?? recaptureBase?.id ?? base.id;
+      const returnLeadId = recaptureBase || recaptureLeadId ? leadId : "new";
       const merged: typeof base = {
         ...base,
-        ...parsed.lead,
+        id: leadId,
         name: parsed.lead.name ?? "",
         company: parsed.lead.company ?? "",
         designation: parsed.lead.designation ?? "",
         mobile: parsed.lead.mobile ?? "",
         email: parsed.lead.email ?? "",
         city: parsed.lead.city ?? "",
+        interests: base.interests,
+        priority: base.priority,
+        summary: base.summary,
         fieldConfidence: parsed.confidence,
+        synced: false,
       };
+      if (base.consentAt) merged.consentAt = base.consentAt;
 
       const verification = verifyCapturedLead(merged, { fieldConfidence: parsed.confidence });
 
-      saveLeadDraft({
+      const draftPayload: Parameters<typeof saveLeadDraft>[0] = {
         lead: merged,
         captureSource: "qr",
-        captureMeta: { rawQr: raw, verifiedAt: new Date().toISOString() },
         fieldConfidence: parsed.confidence,
+      };
+      const meta = mergeVoiceMeta(base.captureMeta, {
+        rawQr: raw,
+        verifiedAt: new Date().toISOString(),
       });
+      if (meta) draftPayload.captureMeta = meta;
+      saveLeadDraft(draftPayload);
+      clearRecaptureBase();
 
-      toast.success("Delegate badge scanned", {
+      toast.success(recaptureBase || recaptureLeadId ? "QR re-scanned" : "Delegate badge scanned", {
         description: verification.readyToSave ? "Review and save" : "Some fields need verification",
       });
 
-      navigate({ to: "/leads/$leadId", params: { leadId: "new" }, search: { source: "qr" } });
+      navigate({
+        to: "/leads/$leadId",
+        params: { leadId: returnLeadId },
+        search: { source: "qr" },
+      });
       return true;
     },
-    [navigate],
+    [navigate, recaptureLeadId],
   );
 
   const restartScanner = useCallback(() => {
