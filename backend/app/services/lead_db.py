@@ -30,6 +30,7 @@ def upsert_lead_in_db(
             else None
         )
         card_image_id = capture_meta.card_image_id if capture_meta else None
+        audio_id = capture_meta.audio_id if capture_meta else None
 
         with conn.cursor() as cur:
             cur.execute(
@@ -101,6 +102,12 @@ def upsert_lead_in_db(
                 cur.execute(
                     "UPDATE lead_card_images SET lead_id = %s WHERE id = %s",
                     (lead.id, card_image_id),
+                )
+
+            if audio_id:
+                cur.execute(
+                    "UPDATE lead_audio SET lead_id = %s WHERE id = %s",
+                    (lead.id, audio_id),
                 )
 
             cur.execute(LEAD_SELECT_BY_ID_SQL, (lead.id,))

@@ -480,6 +480,12 @@ def delete_user(
             )
             if int(cur.fetchone()["c"]) > 0:
                 cur.execute(f"DELETE FROM lead_card_images WHERE lead_id IN ({ph})", lead_ids)
+            cur.execute(
+                "SELECT COUNT(*) AS c FROM information_schema.TABLES "
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lead_audio'"
+            )
+            if int(cur.fetchone()["c"]) > 0:
+                cur.execute(f"DELETE FROM lead_audio WHERE lead_id IN ({ph})", lead_ids)
             cur.execute(f"DELETE FROM leads WHERE id IN ({ph})", lead_ids)
         if lead_names:
             name_ph = ",".join(["%s"] * len(lead_names))
@@ -632,6 +638,12 @@ def delete_lead(lead_id: str) -> dict[str, bool]:
         if not cur.fetchone():
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
         cur.execute("DELETE FROM lead_card_images WHERE lead_id = %s", (lead_id,))
+        cur.execute(
+            "SELECT COUNT(*) AS c FROM information_schema.TABLES "
+            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lead_audio'"
+        )
+        if int(cur.fetchone()["c"]) > 0:
+            cur.execute("DELETE FROM lead_audio WHERE lead_id = %s", (lead_id,))
         cur.execute("DELETE FROM leads WHERE id = %s", (lead_id,))
         conn.commit()
     return {"ok": True}

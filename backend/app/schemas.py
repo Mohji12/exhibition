@@ -27,11 +27,17 @@ class CaptureMeta(CamelModel):
     ocr_text: str | None = None
     ocr_confidence: float | None = None
     transcript: str | None = None
+    live_transcript: str | None = None
     verified_at: str | None = None
     ai_verified_at: str | None = None
     ai_issues: list[str] | None = None
     ocr_quality: Literal["good", "fair", "poor"] | None = None
     card_image_id: str | None = None
+    audio_id: str | None = None
+    audio_key: str | None = None
+    voice_status: Literal["recording", "saved", "processing", "ready", "failed"] | None = None
+    voice_error: str | None = None
+    processing_note: bool | None = None
     field_confidence: dict[str, float] | None = None
 
 
@@ -48,6 +54,18 @@ class UploadCardImageRequest(CamelModel):
 
 
 class UploadCardImageResponse(CamelModel):
+    ok: bool
+    id: str
+    error: str | None = None
+
+
+class UploadAudioRequest(CamelModel):
+    audio_base64: str = Field(min_length=8)
+    mime_type: str = "audio/webm"
+    lead_id: str | None = None
+
+
+class UploadAudioResponse(CamelModel):
     ok: bool
     id: str
     error: str | None = None

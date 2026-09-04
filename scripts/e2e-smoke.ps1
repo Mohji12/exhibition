@@ -223,6 +223,74 @@ $patchAdmin = Invoke-Api PATCH "/api/admin/users/$idA" @{
 Assert-True ($patchAdmin.designation -eq "Senior Booth Lead") "Admin can edit exhibitor profile fields"
 
 Write-Host ""
+Write-Host "=== 9b. Custom interest + audio backup ===" -ForegroundColor Cyan
+$customTag = "Custom E2E Widget $stamp"
+$leadCustom = Invoke-Api POST /api/leads @{
+  id = [guid]::NewGuid().ToString()
+  name = "Custom Interest Visitor"
+  company = "Widget Co"
+  designation = "Buyer"
+  mobile = "9000000001"
+  email = "custom.interest.$stamp@example.com"
+  city = "Chennai"
+  priority = "warm"
+  interests = @($customTag)
+  summary = "Interested in custom widget"
+  synced = $false
+  capturedAt = (Get-Date).ToUniversalTime().ToString("o")
+  captureSource = "manual"
+  captureMeta = @{ liveTranscript = "talking about widgets"; voiceStatus = "processing"; processingNote = $true }
+} -Token $tokA
+Assert-True ($leadCustom.ok -eq $true) "Upsert lead with custom interest"
+Assert-True (@($leadCustom.lead.interests) -contains $customTag) "Lead stores custom interest"
+
+$bytes = New-Object byte[] 128
+(New-Object Random).NextBytes($bytes)
+$audioB64 = [Convert]::ToBase64String($bytes)
+$audioUp = Invoke-Api POST /api/capture/audio @{
+  audioBase64 = $audioB64
+  mimeType = "audio/webm"
+  leadId = $leadCustom.lead.id
+} -Token $tokA
+Assert-True ($audioUp.ok -eq $true -and $audioUp.id) "Upload audio backup"
+$audioId = [string]$audioUp.id
+
+$leadWithAudio = Invoke-Api POST /api/leads @{
+  id = $leadCustom.lead.id
+  name = $leadCustom.lead.name
+  company = $leadCustom.lead.company
+  designation = $leadCustom.lead.designation
+  mobile = $leadCustom.lead.mobile
+  email = $leadCustom.lead.email
+  city = $leadCustom.lead.city
+  priority = "warm"
+  interests = @($customTag)
+  summary = "Interested in custom widget"
+  synced = $false
+  capturedAt = $leadCustom.lead.capturedAt
+  captureSource = "manual"
+  captureMeta = @{
+    audioId = $audioId
+    liveTranscript = "talking about widgets"
+    transcript = "talking about widgets"
+    voiceStatus = "ready"
+  }
+} -Token $tokA
+Assert-True ($leadWithAudio.ok -eq $true) "Upsert lead binds audioId"
+Assert-True ($leadWithAudio.lead.captureMeta.audioId -eq $audioId) "Lead captureMeta has audioId"
+
+$reprocess = Invoke-Api POST "/api/capture/audio/$audioId/transcribe?transcript_hint=talking%20about%20widgets" @{} -Token $tokA
+Assert-True ($null -ne $reprocess.ok) "Reprocess stored audio returns response"
+
+$tinyPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+$cardUp = Invoke-Api POST /api/capture/card-image @{
+  imageBase64 = $tinyPng
+  mimeType = "image/png"
+} -Token $tokA -RawStatus
+# tiny png may be rejected as too small — accept 200 or 400
+Assert-True ($cardUp.Status -eq 200 -or $cardUp.Status -eq 400) "Card image endpoint responds" "status=$($cardUp.Status)"
+
+Write-Host ""
 Write-Host "=== 10. Cleanup - delete test exhibitors ===" -ForegroundColor Cyan
 foreach ($uid in $createdUserIds) {
   $del = Invoke-Api DELETE "/api/admin/users/$uid" -Token $adminTok -RawStatus

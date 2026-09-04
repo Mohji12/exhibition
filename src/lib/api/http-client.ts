@@ -441,3 +441,29 @@ export async function transcribeConversation(body: {
     body: JSON.stringify(body),
   });
 }
+
+export type UploadAudioResponse = { ok: boolean; id: string; error?: string | null };
+
+export async function uploadAudio(body: {
+  audioBase64: string;
+  mimeType?: string;
+  leadId?: string;
+}): Promise<UploadAudioResponse> {
+  return apiFetch<UploadAudioResponse>("/api/capture/audio", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function reprocessAudio(
+  audioId: string,
+  transcriptHint?: string,
+): Promise<TranscribeResponse> {
+  const q = transcriptHint
+    ? `?transcript_hint=${encodeURIComponent(transcriptHint)}`
+    : "";
+  return apiFetch<TranscribeResponse>(`/api/capture/audio/${encodeURIComponent(audioId)}/transcribe${q}`, {
+    method: "POST",
+    body: "{}",
+  });
+}

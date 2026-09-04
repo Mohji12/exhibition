@@ -7,11 +7,17 @@ export type CaptureMeta = {
   ocrText?: string;
   ocrConfidence?: number;
   transcript?: string;
+  liveTranscript?: string;
   verifiedAt?: string;
   aiVerifiedAt?: string;
   aiIssues?: string[];
   ocrQuality?: "good" | "fair" | "poor";
   cardImageId?: string;
+  audioId?: string;
+  audioKey?: string;
+  voiceStatus?: "recording" | "saved" | "processing" | "ready" | "failed";
+  voiceError?: string;
+  processingNote?: boolean;
   fieldConfidence?: Partial<Record<string, number>>;
 };
 

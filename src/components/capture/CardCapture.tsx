@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { analyzeCardCapture, uploadCardImage } from "@/lib/api/http-client";
 import {
   compressDataUrl,
+  deletePendingCardImage,
   putPendingCardImage,
 } from "@/lib/domain/capture/card-image-store";
 import { saveLeadDraft } from "@/lib/domain/capture/draft";
@@ -86,20 +87,7 @@ export function CardCapture() {
   const backupCardImage = async (dataUrl: string, leadId: string) => {
     const compressed = await compressDataUrl(dataUrl, 0.85, 1600);
     const localKey = `card:${leadId}`;
-    try {
-      // Do not pass leadId yet — lead row may not exist (FK). Attach on lead upsert.
-      const uploaded = await uploadCardImage({
-        imageBase64: compressed.dataUrl,
-        mimeType: compressed.mimeType,
-      });
-      if (uploaded.ok && uploaded.id) {
-        setCardImageId(uploaded.id);
-        setPendingImageKey(undefined);
-        return uploaded.id;
-      }
-    } catch {
-      /* offline — keep in IndexedDB */
-    }
+    // Always keep a local backup first so reconnect can retry
     await putPendingCardImage({
       key: localKey,
       imageBase64: compressed.dataUrl,
@@ -108,6 +96,30 @@ export function CardCapture() {
       createdAt: new Date().toISOString(),
     });
     setPendingImageKey(localKey);
+
+    if (!navigator.onLine) {
+      toast.message(
+        "Processing may take a moment. Save the lead now — we keep the card as backup and finish when the connection is good.",
+      );
+      return undefined;
+    }
+
+    try {
+      const uploaded = await uploadCardImage({
+        imageBase64: compressed.dataUrl,
+        mimeType: compressed.mimeType,
+      });
+      if (uploaded.ok && uploaded.id) {
+        setCardImageId(uploaded.id);
+        await deletePendingCardImage(localKey);
+        setPendingImageKey(undefined);
+        return uploaded.id;
+      }
+    } catch {
+      toast.message(
+        "Processing may take a moment. Save the lead now — we keep the card as backup and finish when the connection is good.",
+      );
+    }
     return undefined;
   };
 
@@ -258,8 +270,12 @@ export function CardCapture() {
       ocrConfidence,
       verifiedAt: new Date().toISOString(),
       fieldConfidence: parsedPreview.confidence as CaptureMeta["fieldConfidence"],
+      processingNote: !imageId,
     };
     if (imageId) captureMeta.cardImageId = imageId;
+    if (pendingImageKey) {
+      /* local backup key retained until sync flushes */
+    }
     if (parsedPreview.source === "gemini") {
       captureMeta.aiVerifiedAt = new Date().toISOString();
       captureMeta.aiIssues = parsedPreview.aiIssues;
@@ -272,6 +288,12 @@ export function CardCapture() {
       captureMeta,
       fieldConfidence: parsedPreview.confidence,
     });
+
+    if (!imageId) {
+      toast.message(
+        "Processing may take a moment. Save the lead now — we keep the card as backup and finish when the connection is good.",
+      );
+    }
 
     navigate({ to: "/leads/$leadId", params: { leadId: "new" }, search: { source: "card" } });
   };

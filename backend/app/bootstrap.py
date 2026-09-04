@@ -195,6 +195,20 @@ CREATE TABLE IF NOT EXISTS lead_card_images (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 """
 
+_CREATE_LEAD_AUDIO = """
+CREATE TABLE IF NOT EXISTS lead_audio (
+  id CHAR(36) PRIMARY KEY,
+  lead_id VARCHAR(36) NULL,
+  mime_type VARCHAR(64) NOT NULL DEFAULT 'audio/webm',
+  audio_blob MEDIUMBLOB NOT NULL,
+  sha256 CHAR(64) NOT NULL,
+  captured_by CHAR(36) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_lead_audio_lead (lead_id),
+  INDEX idx_lead_audio_sha (sha256)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+"""
+
 
 def _ensure_card_images(cur) -> None:
     cur.execute(_CREATE_CARD_IMAGES)
@@ -222,6 +236,32 @@ def _ensure_card_images(cur) -> None:
             logger.warning("Could not add fk_lead_card_images_user", exc_info=True)
 
 
+def _ensure_lead_audio(cur) -> None:
+    cur.execute(_CREATE_LEAD_AUDIO)
+    if not _constraint_exists(cur, "fk_lead_audio_lead"):
+        try:
+            cur.execute(
+                """
+                ALTER TABLE lead_audio
+                  ADD CONSTRAINT fk_lead_audio_lead
+                  FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE SET NULL
+                """
+            )
+        except Exception:
+            logger.warning("Could not add fk_lead_audio_lead", exc_info=True)
+    if not _constraint_exists(cur, "fk_lead_audio_user"):
+        try:
+            cur.execute(
+                """
+                ALTER TABLE lead_audio
+                  ADD CONSTRAINT fk_lead_audio_user
+                  FOREIGN KEY (captured_by) REFERENCES users(id) ON DELETE SET NULL
+                """
+            )
+        except Exception:
+            logger.warning("Could not add fk_lead_audio_user", exc_info=True)
+
+
 def bootstrap_auth() -> None:
     email = settings.auth_bootstrap_email.strip().lower()
     pin = settings.auth_bootstrap_pin.strip()
@@ -236,5 +276,6 @@ def bootstrap_auth() -> None:
         _ensure_user(cur, name, email, pin, "Admin")
         _ensure_captured_by(cur)
         _ensure_card_images(cur)
+        _ensure_lead_audio(cur)
         _purge_demo_data(cur, email)
         conn.commit()

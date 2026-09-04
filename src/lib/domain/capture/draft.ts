@@ -34,7 +34,7 @@ export function mergeDraftIntoLead(base: Lead, draft: LeadDraft): Lead {
   return {
     ...base,
     ...draft.lead,
-    id: base.id,
+    id: draft.lead.id || base.id,
     interests: draft.lead.interests ?? base.interests,
     priority: draft.lead.priority ?? base.priority,
     summary: draft.lead.summary ?? base.summary,

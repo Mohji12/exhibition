@@ -235,8 +235,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const uploaded = await uploadCardImage({
             imageBase64: img.imageBase64,
             mimeType: img.mimeType,
-            // Attach only if lead already exists in DB; otherwise upsert binds via cardImageId
-            leadId: undefined,
+            leadId: img.leadId,
           });
           if (uploaded.ok && uploaded.id) {
             await deletePendingCardImage(img.key);
@@ -263,6 +262,76 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
         } catch {
           /* keep in IndexedDB */
+        }
+      }
+    } catch {
+      /* IndexedDB unavailable */
+    }
+
+    // Flush offline audio backups: upload → reprocess → attach to lead
+    try {
+      const { listPendingAudio, deletePendingAudio, putPendingAudio } = await import(
+        "@/lib/domain/capture/audio-store"
+      );
+      const { uploadAudio, reprocessAudio } = await import("@/lib/api/http-client");
+      const { summarizeTranscript } = await import("@/lib/domain/capture/summarize-transcript");
+      const pendingAudio = await listPendingAudio();
+      for (const clip of pendingAudio) {
+        try {
+          let audioId = clip.audioId;
+          if (!audioId) {
+            const uploaded = await uploadAudio({
+              audioBase64: clip.audioBase64,
+              mimeType: clip.mimeType,
+              leadId: clip.leadId,
+            });
+            if (!uploaded.ok || !uploaded.id) continue;
+            audioId = uploaded.id;
+            await putPendingAudio({ ...clip, audioId, status: "uploaded" });
+          }
+
+          const result = await reprocessAudio(audioId, clip.liveTranscript);
+          const transcript =
+            result.transcript || clip.liveTranscript || "";
+          const nextSummary =
+            result.summary || (transcript ? summarizeTranscript(transcript) : "");
+
+          if (clip.leadId) {
+            const patchLead = (l: Lead): Lead => {
+              const meta = {
+                ...l.captureMeta,
+                audioId,
+                audioKey: clip.key,
+                liveTranscript: clip.liveTranscript || l.captureMeta?.liveTranscript,
+                transcript: transcript || l.captureMeta?.transcript,
+                voiceStatus: result.ok || transcript ? ("ready" as const) : ("failed" as const),
+                processingNote: !(result.ok || transcript),
+                voiceError:
+                  result.ok || transcript
+                    ? undefined
+                    : "Could not finish automatically. Your recording and live notes are kept.",
+              };
+              const summary =
+                !l.summary.trim() || l.summary === summarizeTranscript(clip.liveTranscript || "")
+                  ? nextSummary || l.summary
+                  : l.summary;
+              return { ...l, summary, captureMeta: meta, synced: false };
+            };
+            setLeads((prev) => prev.map((l) => (l.id === clip.leadId ? patchLead(l) : l)));
+            const lead = leadsRef.current.find((l) => l.id === clip.leadId);
+            if (lead) {
+              const next = patchLead(lead);
+              leadsRef.current = leadsRef.current.map((l) => (l.id === clip.leadId ? next : l));
+              pendingRef.current = upsertPendingLead(pendingRef.current, next);
+              persistQueue(pendingRef.current);
+            }
+          }
+
+          if (result.ok || transcript) {
+            await deletePendingAudio(clip.key);
+          }
+        } catch {
+          /* keep in IndexedDB for next reconnect */
         }
       }
     } catch {
@@ -323,8 +392,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (typeof navigator !== "undefined" && !navigator.onLine) return;
       const hasPending =
         pendingRef.current.leads.some((l) => !l.synced) ||
-        leadsRef.current.some((l) => !l.synced);
-      if (hasPending) scheduleFlush({ silent });
+        leadsRef.current.some((l) => !l.synced) ||
+        leadsRef.current.some(
+          (l) =>
+            l.captureMeta?.voiceStatus === "processing" ||
+            l.captureMeta?.voiceStatus === "saved" ||
+            l.captureMeta?.processingNote,
+        );
+      // Always attempt media flush on reconnect; syncAll no-ops lead queue if empty
+      scheduleFlush({ silent });
+      void hasPending;
     };
 
     const bootTimer = setTimeout(() => maybeFlush(true), 800);

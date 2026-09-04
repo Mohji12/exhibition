@@ -4,8 +4,10 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { transcribeConversation } from "@/lib/api/http-client";
+import { reprocessAudio, transcribeConversation, uploadAudio } from "@/lib/api/http-client";
+import { makeAudioKey, putPendingAudio } from "@/lib/domain/capture/audio-store";
 import { summarizeTranscript } from "@/lib/domain/capture/summarize-transcript";
+import type { CaptureMeta } from "@/lib/types";
 
 type SpeechRecognitionCtor = new () => SpeechRecognition;
 
@@ -18,12 +20,17 @@ function getSpeechRecognition(): SpeechRecognitionCtor | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
+const PROCESS_NOTE =
+  "Processing may take a moment. Save the lead now — we keep the recording and notes as backup and finish in the background when the connection is good.";
+
 type Props = {
+  leadId: string;
   summary: string;
   consentAt?: string;
+  captureMeta?: CaptureMeta;
   onSummaryChange: (summary: string) => void;
   onConsentChange: (consentAt: string | undefined) => void;
-  onTranscript?: (transcript: string) => void;
+  onCaptureMetaChange: (patch: Partial<CaptureMeta>) => void;
 };
 
 function blobToBase64(blob: Blob): Promise<string> {
@@ -40,21 +47,29 @@ function blobToBase64(blob: Blob): Promise<string> {
 }
 
 export function VoiceRecorder({
+  leadId,
   summary,
   consentAt,
+  captureMeta,
   onSummaryChange,
   onConsentChange,
-  onTranscript,
+  onCaptureMetaChange,
 }: Props) {
   const [consented, setConsented] = useState(!!consentAt);
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
-  const [interim, setInterim] = useState("");
+  const [liveNotes, setLiveNotes] = useState("");
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const transcriptRef = useRef("");
+  const autoSummaryRef = useRef("");
+  const summaryRef = useRef(summary);
+
+  useEffect(() => {
+    summaryRef.current = summary;
+  }, [summary]);
 
   const stopTracks = () => {
     recognitionRef.current?.stop();
@@ -65,6 +80,15 @@ export function VoiceRecorder({
 
   useEffect(() => () => stopTracks(), []);
 
+  const applyLive = (text: string) => {
+    setLiveNotes(text);
+    onCaptureMetaChange({
+      liveTranscript: text,
+      transcript: text,
+      voiceStatus: "recording",
+    });
+  };
+
   const start = async () => {
     if (!consented) {
       toast.error("Visitor must consent before recording");
@@ -74,11 +98,12 @@ export function VoiceRecorder({
     const SpeechRecognitionClass = getSpeechRecognition();
     transcriptRef.current = "";
     chunksRef.current = [];
-    setInterim("");
+    setLiveNotes("");
     setRecording(true);
     onConsentChange(
       new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
     );
+    onCaptureMetaChange({ voiceStatus: "recording", voiceError: undefined, processingNote: true });
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -95,7 +120,7 @@ export function VoiceRecorder({
       };
       recorder.start(1000);
     } catch {
-      toast.message("Microphone unavailable — type notes after you stop");
+      toast.message("Microphone unavailable — type live notes while talking");
     }
 
     if (SpeechRecognitionClass) {
@@ -110,40 +135,167 @@ export function VoiceRecorder({
         }
         if (event.results[event.results.length - 1]?.isFinal) {
           transcriptRef.current = `${transcriptRef.current} ${chunk}`.trim();
-          onTranscript?.(transcriptRef.current);
-          setInterim(transcriptRef.current);
+          applyLive(transcriptRef.current);
         } else {
-          setInterim(`${transcriptRef.current} ${chunk}`.trim());
+          applyLive(`${transcriptRef.current} ${chunk}`.trim());
         }
       };
       recognition.onerror = () => {
-        /* keep recording; server notes can still work */
+        /* keep recording; live notes + audio backup still work */
       };
       recognition.start();
       recognitionRef.current = recognition;
     }
   };
 
+  const processInBackground = async (opts: {
+    audioBase64: string;
+    mimeType: string;
+    audioKey: string;
+    liveHint: string;
+  }) => {
+    const { audioBase64, mimeType, audioKey, liveHint } = opts;
+    let audioId = captureMeta?.audioId;
+
+    try {
+      if (!navigator.onLine) {
+        onCaptureMetaChange({
+          audioKey,
+          liveTranscript: liveHint || undefined,
+          transcript: liveHint || undefined,
+          voiceStatus: "saved",
+          processingNote: true,
+        });
+        toast.message(PROCESS_NOTE);
+        return;
+      }
+
+      const uploaded = await uploadAudio({
+        audioBase64,
+        mimeType,
+        leadId,
+      });
+      if (uploaded.ok && uploaded.id) {
+        audioId = uploaded.id;
+        await putPendingAudio({
+          key: audioKey,
+          audioBase64,
+          mimeType,
+          leadId,
+          liveTranscript: liveHint,
+          audioId,
+          createdAt: new Date().toISOString(),
+          status: "uploaded",
+        });
+        onCaptureMetaChange({
+          audioId,
+          audioKey,
+          liveTranscript: liveHint || undefined,
+          voiceStatus: "processing",
+          processingNote: true,
+        });
+      }
+
+      let result = audioId
+        ? await reprocessAudio(audioId, liveHint || undefined)
+        : await transcribeConversation({
+            audioBase64,
+            mimeType,
+            transcriptHint: liveHint || undefined,
+          });
+
+      if (!result.ok && liveHint) {
+        result = {
+          ok: true,
+          transcript: liveHint,
+          summary: summarizeTranscript(liveHint),
+          error: null,
+        };
+      }
+
+      if (!result.ok) {
+        onCaptureMetaChange({
+          audioId,
+          audioKey,
+          liveTranscript: liveHint || undefined,
+          transcript: liveHint || undefined,
+          voiceStatus: "failed",
+          voiceError: "Could not finish automatically. Your recording and live notes are kept.",
+          processingNote: true,
+        });
+        toast.message(
+          "Could not finish automatically. Your recording and live notes are kept — edit the summary if needed.",
+        );
+        return;
+      }
+
+      const nextTranscript = result.transcript || liveHint;
+      const nextSummary = result.summary || (nextTranscript ? summarizeTranscript(nextTranscript) : "");
+      if (nextTranscript) {
+        onCaptureMetaChange({
+          audioId,
+          audioKey,
+          liveTranscript: liveHint || nextTranscript,
+          transcript: nextTranscript,
+          voiceStatus: "ready",
+          voiceError: undefined,
+          processingNote: false,
+        });
+      } else {
+        onCaptureMetaChange({
+          audioId,
+          audioKey,
+          voiceStatus: "ready",
+          voiceError: undefined,
+          processingNote: false,
+        });
+      }
+      if (nextSummary) {
+        const current = summaryRef.current.trim();
+        const previousAuto = autoSummaryRef.current;
+        if (!current || current === previousAuto || (liveHint && current === summarizeTranscript(liveHint))) {
+          autoSummaryRef.current = nextSummary;
+          onSummaryChange(nextSummary);
+        }
+      }
+      toast.success("Summary ready");
+    } catch {
+      onCaptureMetaChange({
+        audioId,
+        audioKey,
+        liveTranscript: liveHint || undefined,
+        transcript: liveHint || undefined,
+        voiceStatus: navigator.onLine ? "failed" : "saved",
+        voiceError: "Could not finish automatically. Your recording and live notes are kept.",
+        processingNote: true,
+      });
+      toast.message(PROCESS_NOTE);
+    }
+  };
+
   const stop = async () => {
     setRecording(false);
-    const liveHint = (interim || transcriptRef.current).trim();
+    const liveHint = (liveNotes || transcriptRef.current).trim();
     const recorder = mediaRef.current;
 
-    const finishLocal = () => {
-      if (liveHint && !summary.trim()) {
-        onSummaryChange(summarizeTranscript(liveHint));
-        onTranscript?.(liveHint);
-        toast.success("Conversation notes ready — edit if needed");
-      } else if (liveHint) {
-        onTranscript?.(liveHint);
+    if (liveHint) {
+      onCaptureMetaChange({
+        liveTranscript: liveHint,
+        transcript: liveHint,
+        voiceStatus: "processing",
+        processingNote: true,
+      });
+      if (!summary.trim()) {
+        const local = summarizeTranscript(liveHint);
+        autoSummaryRef.current = local;
+        onSummaryChange(local);
       }
-    };
+    }
 
     if (!recorder || recorder.state === "inactive") {
       stopTracks();
       mediaRef.current = null;
-      finishLocal();
-      setInterim("");
+      if (liveHint) toast.message(PROCESS_NOTE);
       return;
     }
 
@@ -159,34 +311,57 @@ export function VoiceRecorder({
 
     try {
       if (blob.size < 64) {
-        finishLocal();
+        onCaptureMetaChange({
+          liveTranscript: liveHint || undefined,
+          transcript: liveHint || undefined,
+          voiceStatus: liveHint ? "ready" : undefined,
+        });
         return;
       }
       const audioBase64 = await blobToBase64(blob);
-      const result = await transcribeConversation({
+      const mimeType = blob.type || "audio/webm";
+      const audioKey = makeAudioKey(leadId);
+      await putPendingAudio({
+        key: audioKey,
         audioBase64,
-        mimeType: blob.type || "audio/webm",
-        transcriptHint: liveHint || undefined,
+        mimeType,
+        leadId,
+        liveTranscript: liveHint,
+        createdAt: new Date().toISOString(),
+        status: "pending",
       });
-      if (!result.ok) {
-        finishLocal();
-        toast.message("Could not process recording — type notes instead");
-        return;
-      }
-      if (result.transcript) onTranscript?.(result.transcript);
-      if (result.summary) onSummaryChange(result.summary);
-      else if (result.transcript && !summary.trim()) {
-        onSummaryChange(summarizeTranscript(result.transcript));
-      }
-      toast.success("Summary ready");
-    } catch {
-      finishLocal();
-      toast.message("Could not process recording — type notes instead");
-    } finally {
+      onCaptureMetaChange({
+        audioKey,
+        liveTranscript: liveHint || undefined,
+        transcript: liveHint || undefined,
+        voiceStatus: "processing",
+        processingNote: true,
+      });
+      toast.message(PROCESS_NOTE);
+      // Non-blocking background work
+      void processInBackground({ audioBase64, mimeType, audioKey, liveHint }).finally(() => {
+        setProcessing(false);
+      });
       setProcessing(false);
-      setInterim("");
+    } catch {
+      onCaptureMetaChange({
+        liveTranscript: liveHint || undefined,
+        transcript: liveHint || undefined,
+        voiceStatus: "failed",
+        voiceError: "Could not save recording backup locally.",
+        processingNote: true,
+      });
+      toast.message(PROCESS_NOTE);
+      setProcessing(false);
     }
   };
+
+  const voiceStatus = captureMeta?.voiceStatus;
+  const showProcessBanner =
+    voiceStatus === "processing" ||
+    voiceStatus === "saved" ||
+    voiceStatus === "failed" ||
+    captureMeta?.processingNote;
 
   return (
     <section className="rounded-xl border border-border bg-card p-4 shadow-card">
@@ -198,7 +373,9 @@ export function VoiceRecorder({
             Recording…
           </span>
         ) : null}
-        {processing ? <span className="text-xs text-muted-foreground">Processing…</span> : null}
+        {processing || voiceStatus === "processing" ? (
+          <span className="text-xs text-muted-foreground">Processing in background…</span>
+        ) : null}
       </div>
 
       <label className="mt-3 flex items-center gap-2 text-sm text-foreground">
@@ -218,16 +395,35 @@ export function VoiceRecorder({
         onClick={recording ? () => void stop() : () => void start()}
         variant={recording ? "destructive" : "secondary"}
         className="mt-3 h-11 w-full rounded-xl"
-        disabled={(!consented && !recording) || processing}
+        disabled={!consented && !recording}
       >
         {recording ? <Square className="size-4" /> : <Mic className="size-4" />}
-        {recording ? "Stop recording" : processing ? "Processing…" : "Start recording"}
+        {recording ? "Stop recording" : "Start recording"}
       </Button>
 
+      {(recording || liveNotes || captureMeta?.liveTranscript) && (
+        <div className="mt-3 rounded-xl border border-border bg-secondary/40 px-3 py-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Live notes (backup)
+          </p>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">
+            {recording
+              ? liveNotes || "Listening…"
+              : liveNotes || captureMeta?.liveTranscript || "—"}
+          </p>
+        </div>
+      )}
+
+      {showProcessBanner ? (
+        <p className="mt-3 rounded-xl border border-primary/20 bg-primary-soft px-3 py-2 text-xs text-primary">
+          {captureMeta?.voiceError || PROCESS_NOTE}
+        </p>
+      ) : null}
+
       <Textarea
-        value={recording ? interim || summary : summary}
+        value={summary}
         onChange={(e) => onSummaryChange(e.target.value)}
-        placeholder="Conversation summary appears here after recording…"
+        placeholder="Conversation summary — editable anytime"
         className="mt-3 min-h-28 rounded-xl text-sm"
       />
 

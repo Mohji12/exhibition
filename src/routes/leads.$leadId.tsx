@@ -89,6 +89,7 @@ function LeadDetailPage() {
     source ?? initial.captureSource,
   );
   const [saving, setSaving] = useState(false);
+  const [customInterest, setCustomInterest] = useState("");
   const draftLoaded = useRef(false);
 
   useEffect(() => {
@@ -157,6 +158,17 @@ function LeadDetailPage() {
         : [...prev.interests, tag],
     }));
 
+  const addCustomInterest = () => {
+    const tag = customInterest.trim();
+    if (!tag) return;
+    setLead((prev) => {
+      const exists = prev.interests.some((t) => t.toLowerCase() === tag.toLowerCase());
+      if (exists) return prev;
+      return { ...prev, interests: [...prev.interests, tag] };
+    });
+    setCustomInterest("");
+  };
+
   const save = async (schedule?: boolean) => {
     if (!verification.readyToSave) {
       toast.error("Fix validation errors before saving");
@@ -188,7 +200,6 @@ function LeadDetailPage() {
         captureMeta: {
           ...lead.captureMeta,
           verifiedAt: new Date().toISOString(),
-          transcript: lead.captureMeta?.transcript,
         },
         synced: false,
       }).then((saved) => {
@@ -197,6 +208,15 @@ function LeadDetailPage() {
             ? "Synced to Conninter database"
             : "Saved offline — will sync when connection returns",
         });
+        if (
+          lead.captureMeta?.voiceStatus === "processing" ||
+          lead.captureMeta?.voiceStatus === "saved" ||
+          lead.captureMeta?.processingNote
+        ) {
+          toast.message(
+            "Recording or card may still be processing in the background and will finish when online.",
+          );
+        }
       });
       navigate({ to: schedule ? "/schedule" : "/leads" });
     } catch {
@@ -215,12 +235,21 @@ function LeadDetailPage() {
         {captureSource === "qr" && "Auto-filled from QR scan — please verify"}
         {captureSource === "card" &&
           (lead.captureMeta?.aiVerifiedAt
-            ? "Auto-filled by AI card scan — please verify"
+            ? "Auto-filled from card scan — please verify"
             : "Auto-filled from card OCR — please verify")}
         {(!captureSource || captureSource === "manual") && "Enter visitor details below"}
       </div>
 
       {showVerification && <VerificationPanel verification={verification} lead={lead} />}
+
+      {(lead.captureMeta?.voiceStatus === "processing" ||
+        lead.captureMeta?.voiceStatus === "saved" ||
+        lead.captureMeta?.processingNote) && (
+        <div className="mt-3 rounded-xl border border-primary/20 bg-primary-soft px-3.5 py-2.5 text-xs text-primary">
+          Connection is slow or processing is still running. Save the lead now — recording and card
+          data are backed up and will finish when you are online.
+        </div>
+      )}
 
       <div className="mt-3 space-y-3 rounded-xl border border-border bg-card p-4 shadow-card">
         {FORM_FIELDS.map(([key, label]) => (
@@ -239,7 +268,7 @@ function LeadDetailPage() {
       <section className="mt-4 rounded-xl border border-border bg-card p-4 shadow-card">
         <h2 className="text-sm font-semibold text-foreground">Product interest</h2>
         <div className="mt-3 space-y-2.5">
-          {interests.map((tag) => (
+          {[...new Set([...interests, ...lead.interests])].map((tag) => (
             <label key={tag} className="flex items-center gap-3 text-sm text-foreground">
               <Checkbox
                 checked={lead.interests.includes(tag)}
@@ -248,6 +277,29 @@ function LeadDetailPage() {
               {tag}
             </label>
           ))}
+        </div>
+        <div className="mt-3 flex gap-2">
+          <Input
+            value={customInterest}
+            onChange={(e) => setCustomInterest(e.target.value)}
+            placeholder="Not listed? Type your own"
+            className="h-10 rounded-xl"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                addCustomInterest();
+              }
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10 shrink-0 rounded-xl"
+            disabled={!customInterest.trim()}
+            onClick={addCustomInterest}
+          >
+            Add
+          </Button>
         </div>
       </section>
 
@@ -274,14 +326,16 @@ function LeadDetailPage() {
 
       <div className="mt-4">
         <VoiceRecorder
+          leadId={lead.id}
           summary={lead.summary}
           consentAt={lead.consentAt}
+          captureMeta={lead.captureMeta}
           onSummaryChange={(summary) => set("summary", summary)}
           onConsentChange={(consentAt) => set("consentAt", consentAt)}
-          onTranscript={(transcript) =>
+          onCaptureMetaChange={(patch) =>
             setLead((prev) => ({
               ...prev,
-              captureMeta: { ...prev.captureMeta, transcript },
+              captureMeta: { ...prev.captureMeta, ...patch },
             }))
           }
         />

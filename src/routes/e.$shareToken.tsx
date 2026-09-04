@@ -53,6 +53,7 @@ function VisitorExhibitorPage() {
   const [error, setError] = useState("");
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [selected, setSelected] = useState<string[]>([]);
+  const [customInterest, setCustomInterest] = useState("");
   const [captureSource, setCaptureSource] = useState<"qr" | "card">("qr");
   const [ocrText, setOcrText] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
@@ -105,6 +106,16 @@ function VisitorExhibitorPage() {
 
   const toggleInterest = (name: string) => {
     setSelected((prev) => (prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]));
+  };
+
+  const addCustomInterest = () => {
+    const tag = customInterest.trim();
+    if (!tag) return;
+    setSelected((prev) => {
+      if (prev.some((t) => t.toLowerCase() === tag.toLowerCase())) return prev;
+      return [...prev, tag];
+    });
+    setCustomInterest("");
   };
 
   const applyParsed = (fields: Partial<FormState>, source: "qr" | "card", ocr?: string) => {
@@ -401,31 +412,52 @@ function VisitorExhibitorPage() {
                   </div>
                 ))}
 
-                {exhibitor.interests.length > 0 ? (
-                  <div>
-                    <p className="mb-2 text-sm font-medium text-foreground">Interests</p>
-                    <div className="flex flex-wrap gap-2">
-                      {exhibitor.interests.map((interest) => {
-                        const on = selected.includes(interest);
-                        return (
-                          <button
-                            key={interest}
-                            type="button"
-                            onClick={() => toggleInterest(interest)}
-                            className={cn(
-                              "rounded-full px-3 py-1.5 text-xs font-medium transition",
-                              on
-                                ? "bg-primary text-primary-foreground"
-                                : "bg-secondary text-secondary-foreground",
-                            )}
-                          >
-                            {interest}
-                          </button>
-                        );
-                      })}
-                    </div>
+                <div>
+                  <p className="mb-2 text-sm font-medium text-foreground">Interests</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[...new Set([...(exhibitor.interests ?? []), ...selected])].map((interest) => {
+                      const on = selected.includes(interest);
+                      return (
+                        <button
+                          key={interest}
+                          type="button"
+                          onClick={() => toggleInterest(interest)}
+                          className={cn(
+                            "rounded-full px-3 py-1.5 text-xs font-medium transition",
+                            on
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-secondary text-secondary-foreground",
+                          )}
+                        >
+                          {interest}
+                        </button>
+                      );
+                    })}
                   </div>
-                ) : null}
+                  <div className="mt-3 flex gap-2">
+                    <Input
+                      value={customInterest}
+                      onChange={(e) => setCustomInterest(e.target.value)}
+                      placeholder="Not listed? Type your own"
+                      className="h-10 rounded-xl"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          addCustomInterest();
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-10 shrink-0 rounded-xl"
+                      disabled={!customInterest.trim()}
+                      onClick={addCustomInterest}
+                    >
+                      Add
+                    </Button>
+                  </div>
+                </div>
 
                 {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
