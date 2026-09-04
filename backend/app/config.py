@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     resend_api_key: str = ""
     mail_from: str = "FUNNEL <noreply@conninter.com>"
     mail_enabled: bool = False
+    mail_smtp_host: str = ""
+    mail_smtp_port: int = 465
+    mail_smtp_user: str = "emailapikey"
+    mail_smtp_password: str = ""
+    mail_smtp_ssl: bool = True
 
     @property
     def cors_origin_list(self) -> list[str]:
