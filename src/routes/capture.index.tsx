@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Camera, CreditCard, PencilLine, ChevronRight, Flame, Clock3 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { useAuth } from "@/lib/auth";
 import { computeCaptureStats } from "@/lib/domain/stats";
 import { useStore } from "@/lib/store";
 
@@ -47,11 +48,13 @@ const ACTIONS = [
 ] as const;
 
 function CaptureHomePage() {
+  const { session } = useAuth();
   const { leads, appointments } = useStore();
   const { captured, hot, followUps, synced, syncPct } = computeCaptureStats(leads, appointments);
+  const eventLabel = session?.user.eventName?.trim() || "Booth capture";
 
   return (
-    <AppShell title="Capture" subtitle="Booth 42 · Hall B">
+    <AppShell title="Capture" subtitle={eventLabel}>
       <div className="space-y-3">
         {ACTIONS.map(({ icon: Icon, title, desc, ...linkProps }) => (
           <Link
