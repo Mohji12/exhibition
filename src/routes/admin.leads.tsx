@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { PageLoader, InlineLoader } from "@/components/PageLoader";
 import {
@@ -7,11 +7,12 @@ import {
   exportAdminLeadsCsv,
   exportAdminLeadsXlsx,
   fetchAdminLeads,
+  fetchAdminUsers,
   getApiBase,
 } from "@/lib/api/http-client";
 import { useAuth } from "@/lib/auth";
 import { readSession } from "@/lib/auth-session";
-import type { AdminLeadFilters, CaptureSource, Lead, Priority } from "@/lib/types";
+import type { AdminLeadFilters, AuthUser, CaptureSource, Lead, Priority } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -42,7 +43,7 @@ export const Route = createFileRoute("/admin/leads")({
     capturedBy: typeof search.capturedBy === "string" ? search.capturedBy : undefined,
   }),
   head: () => ({
-    meta: [{ title: "Admin leads — Conninter" }],
+    meta: [{ title: "Admin leads — FUNNEL" }],
   }),
   component: AdminLeadsPage,
 });
@@ -61,33 +62,79 @@ function AdminLeadsPage() {
   const { session, ready } = useAuth();
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
+  const [exhibitors, setExhibitors] = useState<AuthUser[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [loadingLeads, setLoadingLeads] = useState(false);
   const [selected, setSelected] = useState<Lead | null>(null);
   const [busy, setBusy] = useState(false);
   const [qDraft, setQDraft] = useState(search.q ?? "");
+  const [exhibitorQuery, setExhibitorQuery] = useState("");
 
   const filters = searchToFilters(search);
+  const exhibitorId = search.capturedBy;
+  const selectedExhibitor = useMemo(
+    () => exhibitors.find((u) => u.id === exhibitorId) ?? null,
+    [exhibitors, exhibitorId],
+  );
 
-  const reload = () => {
-    setLoading(true);
+  useEffect(() => {
+    if (!ready || session?.user.role !== "Admin") return;
+    let cancelled = false;
+    setLoadingUsers(true);
+    fetchAdminUsers()
+      .then((users) => {
+        if (!cancelled) setExhibitors(users.filter((u) => u.role === "Rep"));
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Could not load exhibitors");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingUsers(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, session?.user.role]);
+
+  const reloadLeads = () => {
+    if (!exhibitorId) {
+      setLeads([]);
+      setSelected(null);
+      setLoadingLeads(false);
+      return Promise.resolve();
+    }
+    setLoadingLeads(true);
     return fetchAdminLeads(filters)
       .then((rows) => {
         setLeads(rows);
         setSelected((prev) => (prev ? rows.find((l) => l.id === prev.id) ?? null : null));
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not load leads"))
-      .finally(() => setLoading(false));
+      .finally(() => setLoadingLeads(false));
   };
 
   useEffect(() => {
     if (!ready || session?.user.role !== "Admin") return;
     setQDraft(search.q ?? "");
     setError("");
-    void reload();
+    if (!exhibitorId) {
+      setLeads([]);
+      setSelected(null);
+      return;
+    }
+    void reloadLeads();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when search/auth changes
-  }, [ready, session?.user.role, search.q, search.priority, search.synced, search.source, search.capturedBy]);
+  }, [
+    ready,
+    session?.user.role,
+    search.q,
+    search.priority,
+    search.synced,
+    search.source,
+    search.capturedBy,
+  ]);
 
   const patchSearch = (patch: Partial<LeadsSearch>) => {
     void navigate({
@@ -101,14 +148,40 @@ function AdminLeadsPage() {
     });
   };
 
+  const selectExhibitor = (userId: string) => {
+    setSelected(null);
+    patchSearch({
+      capturedBy: userId,
+      q: undefined,
+      priority: undefined,
+      synced: undefined,
+      source: undefined,
+    });
+    setQDraft("");
+  };
+
+  const clearExhibitor = () => {
+    setSelected(null);
+    setLeads([]);
+    patchSearch({
+      capturedBy: undefined,
+      q: undefined,
+      priority: undefined,
+      synced: undefined,
+      source: undefined,
+    });
+    setQDraft("");
+  };
+
   const onExport = async () => {
+    if (!exhibitorId) return;
     setBusy(true);
     try {
       const blob = await exportAdminLeadsCsv(filters);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "conninter-leads.csv";
+      a.download = `conninter-leads-${selectedExhibitor?.name ?? "exhibitor"}.csv`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success("CSV exported");
@@ -120,13 +193,14 @@ function AdminLeadsPage() {
   };
 
   const onExportExcel = async () => {
+    if (!exhibitorId) return;
     setBusy(true);
     try {
       const blob = await exportAdminLeadsXlsx(filters);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "conninter-leads.xlsx";
+      a.download = `conninter-leads-${selectedExhibitor?.name ?? "exhibitor"}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Excel exported");
@@ -144,7 +218,7 @@ function AdminLeadsPage() {
       await deleteAdminLead(lead.id);
       toast.success("Lead deleted");
       setSelected(null);
-      await reload();
+      await reloadLeads();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Delete failed");
     } finally {
@@ -152,27 +226,122 @@ function AdminLeadsPage() {
     }
   };
 
+  const filteredExhibitors = useMemo(() => {
+    const q = exhibitorQuery.trim().toLowerCase();
+    if (!q) return exhibitors;
+    return exhibitors.filter(
+      (u) =>
+        u.name.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q) ||
+        (u.company ?? "").toLowerCase().includes(q),
+    );
+  }, [exhibitors, exhibitorQuery]);
+
+  if (!exhibitorId) {
+    return (
+      <div className="mx-auto max-w-3xl">
+        <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">FUNNEL</p>
+        <h1 className="mt-1 text-3xl font-semibold tracking-tight text-foreground">Leads</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Each lead belongs to one exhibitor. Select an exhibitor to view and export their visitor
+          data.
+        </p>
+
+        {error ? <p className="mt-4 text-sm text-destructive">{error}</p> : null}
+
+        <div className="mt-6">
+          <Input
+            value={exhibitorQuery}
+            onChange={(e) => setExhibitorQuery(e.target.value)}
+            placeholder="Search exhibitor by name, email, company…"
+            className="h-10 max-w-md rounded-xl"
+          />
+        </div>
+
+        {loadingUsers ? <PageLoader label="Loading exhibitors…" compact className="mt-6" /> : null}
+
+        {!loadingUsers ? (
+          <ul className="mt-6 divide-y divide-border border-y border-border">
+            {filteredExhibitors.length === 0 ? (
+              <li className="py-8 text-sm text-muted-foreground">No exhibitors found.</li>
+            ) : (
+              filteredExhibitors.map((user) => {
+                const count = user.leadsCaptured ?? 0;
+                return (
+                  <li key={user.id}>
+                    <button
+                      type="button"
+                      className="flex w-full flex-col gap-1 py-4 text-left transition-colors hover:bg-secondary/40 sm:flex-row sm:items-center sm:justify-between"
+                      onClick={() => selectExhibitor(user.id)}
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-foreground">{user.name}</p>
+                        <p className="truncate text-sm text-muted-foreground">{user.email}</p>
+                        {user.company ? (
+                          <p className="truncate text-xs text-muted-foreground">{user.company}</p>
+                        ) : null}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm tabular-nums text-muted-foreground">
+                          {count} lead{count === 1 ? "" : "s"}
+                        </span>
+                        <span className="text-sm font-medium text-primary">View leads →</span>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })
+            )}
+          </ul>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-6xl">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Conninter</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-foreground">Leads</h1>
+          <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">FUNNEL</p>
+          <button
+            type="button"
+            className="mt-2 text-sm text-primary underline-offset-4 hover:underline"
+            onClick={clearExhibitor}
+          >
+            ← All exhibitors
+          </button>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-foreground">
+            {selectedExhibitor?.name ?? "Exhibitor"} leads
+          </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Search, filter and export every booth capture.
+            {selectedExhibitor?.email}
+            {selectedExhibitor?.company ? ` · ${selectedExhibitor.company}` : ""}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            <Link
+              to="/admin/clients/$userId"
+              params={{ userId: exhibitorId }}
+              className="font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Open exhibitor profile
+            </Link>
           </p>
         </div>
         <div className="flex gap-2">
           <Button
             variant="outline"
             className="h-10 rounded-xl"
-            disabled={busy}
+            disabled={busy || loadingLeads}
             onClick={() => void onExport()}
           >
             {busy ? <InlineLoader className="mr-1" /> : null}
             Export CSV
           </Button>
-          <Button className="h-10 rounded-xl" disabled={busy} onClick={() => void onExportExcel()}>
+          <Button
+            className="h-10 rounded-xl"
+            disabled={busy || loadingLeads}
+            onClick={() => void onExportExcel()}
+          >
             {busy ? <InlineLoader className="mr-1" /> : null}
             Export Excel
           </Button>
@@ -183,7 +352,7 @@ function AdminLeadsPage() {
         className="mt-6 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center"
         onSubmit={(e) => {
           e.preventDefault();
-          patchSearch({ q: qDraft.trim() || undefined });
+          patchSearch({ q: qDraft.trim() || undefined, capturedBy: exhibitorId });
         }}
       >
         <Input
@@ -197,6 +366,7 @@ function AdminLeadsPage() {
           value={search.priority ?? ""}
           onChange={(e) =>
             patchSearch({
+              capturedBy: exhibitorId,
               priority: (e.target.value || undefined) as Priority | undefined,
             })
           }
@@ -211,6 +381,7 @@ function AdminLeadsPage() {
           value={search.source ?? ""}
           onChange={(e) =>
             patchSearch({
+              capturedBy: exhibitorId,
               source: (e.target.value || undefined) as LeadsSearch["source"],
             })
           }
@@ -226,6 +397,7 @@ function AdminLeadsPage() {
           value={search.synced ?? ""}
           onChange={(e) =>
             patchSearch({
+              capturedBy: exhibitorId,
               synced: (e.target.value || undefined) as LeadsSearch["synced"],
             })
           }
@@ -237,40 +409,29 @@ function AdminLeadsPage() {
         <Button type="submit" variant="outline" className="h-10 rounded-xl">
           Apply
         </Button>
-        {search.capturedBy ? (
-          <Button
-            type="button"
-            variant="ghost"
-            className="h-10 rounded-xl"
-            onClick={() => patchSearch({ capturedBy: undefined })}
-          >
-            Clear capturer filter
-          </Button>
-        ) : null}
       </form>
 
       {error ? <p className="mt-4 text-sm text-destructive">{error}</p> : null}
 
-      {loading ? <PageLoader label="Loading leads…" compact className="mt-6" /> : null}
+      {loadingLeads ? <PageLoader label="Loading leads…" compact className="mt-6" /> : null}
 
-      <div className={loading ? "sr-only" : "mt-6 grid gap-6 lg:grid-cols-[1fr_320px]"}>
+      <div className={loadingLeads ? "sr-only" : "mt-6 grid gap-6 lg:grid-cols-[1fr_320px]"}>
         <div className="overflow-x-auto border-y border-border">
-          <table className="w-full min-w-[720px] text-left text-sm">
+          <table className="w-full min-w-[640px] text-left text-sm">
             <thead>
               <tr className="border-b border-border text-xs uppercase tracking-[0.12em] text-muted-foreground">
                 <th className="py-3 pr-3 font-medium">Name</th>
                 <th className="py-3 pr-3 font-medium">Company</th>
                 <th className="py-3 pr-3 font-medium">Priority</th>
                 <th className="py-3 pr-3 font-medium">Source</th>
-                <th className="py-3 pr-3 font-medium">Capturer</th>
                 <th className="py-3 font-medium">Sync</th>
               </tr>
             </thead>
             <tbody>
               {leads.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-muted-foreground">
-                    No leads match these filters.
+                  <td colSpan={5} className="py-8 text-muted-foreground">
+                    No leads for this exhibitor yet.
                   </td>
                 </tr>
               ) : (
@@ -287,7 +448,6 @@ function AdminLeadsPage() {
                     <td className="py-3 pr-3 text-muted-foreground">{lead.company}</td>
                     <td className="py-3 pr-3 capitalize">{lead.priority}</td>
                     <td className="py-3 pr-3">{lead.captureSource ?? "—"}</td>
-                    <td className="py-3 pr-3">{lead.capturerName ?? "—"}</td>
                     <td className="py-3">{lead.synced ? "Synced" : "Pending"}</td>
                   </tr>
                 ))
@@ -307,7 +467,6 @@ function AdminLeadsPage() {
                 <Row label="City" value={selected.city} />
                 <Row label="Priority" value={selected.priority} />
                 <Row label="Source" value={selected.captureSource ?? "—"} />
-                <Row label="Capturer" value={selected.capturerName ?? "—"} />
                 <Row label="Captured" value={selected.capturedAt} />
                 <Row label="Interests" value={selected.interests.join(", ") || "—"} />
               </dl>
