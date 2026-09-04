@@ -20,6 +20,37 @@ const REQUIRED: (keyof Lead)[] = ["name", "company", "designation", "mobile", "e
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+const FIELD_ISSUE_RE: Record<(typeof REQUIRED)[number], RegExp> = {
+  name: /\bnames?\b/i,
+  company: /\bcompan(y|ies)\b/i,
+  designation: /\b(designation|title|role)\b/i,
+  mobile: /\b(mobile|phone|tel)\b/i,
+  email: /\be-?mails?\b/i,
+  city: /\bcit(y|ies)\b/i,
+};
+
+const MISSING_CLAIM_RE =
+  /\b(missing|unreadable|empty|not\s+found|could\s+not|couldn'?t|absent|blank|unavailable|no\s+\w+\s+found)\b/i;
+
+/** Drop Gemini "X is missing" notes when that field is already filled on the lead. */
+export function filterStaleAiIssues(
+  lead: Partial<Pick<Lead, (typeof REQUIRED)[number]>>,
+  issues: string[] | undefined | null,
+): string[] {
+  if (!issues?.length) return [];
+  return issues.filter((issue) => {
+    const text = String(issue || "").trim();
+    if (!text) return false;
+    if (!MISSING_CLAIM_RE.test(text)) return true;
+    for (const field of REQUIRED) {
+      if (!FIELD_ISSUE_RE[field].test(text)) continue;
+      const value = String(lead[field] ?? "").trim();
+      if (value) return false;
+    }
+    return true;
+  });
+}
+
 function verifyField(
   field: keyof Lead,
   value: string | undefined,
@@ -104,4 +135,45 @@ export function fieldStatusMap(verification: CaptureVerification): Partial<Recor
     }
   }
   return map;
+}
+
+const VOICE_MERGE_KEYS = [
+  "transcript",
+  "liveTranscript",
+  "audioId",
+  "audioKey",
+  "voiceStatus",
+  "voiceError",
+  "processingNote",
+] as const;
+
+/** Merge store voice/summary into local lead edits without clobbering contact fields. */
+export function mergeStoreVoiceIntoLead(local: Lead, fromStore: Lead): Lead {
+  const localStatus = local.captureMeta?.voiceStatus;
+  const storeStatus = fromStore.captureMeta?.voiceStatus;
+  const storeVoiceReady = storeStatus === "ready";
+  const localVoicePending =
+    localStatus === "processing" || localStatus === "saved" || localStatus === "recording";
+
+  const localSummary = (local.summary ?? "").trim();
+  const takeSummary =
+    !localSummary ||
+    localSummary.toLowerCase() === "null" ||
+    (localVoicePending && storeVoiceReady && Boolean((fromStore.summary ?? "").trim()));
+
+  const nextMeta = { ...local.captureMeta };
+  if (fromStore.captureMeta && (storeVoiceReady || localVoicePending)) {
+    for (const key of VOICE_MERGE_KEYS) {
+      const value = fromStore.captureMeta[key];
+      if (value !== undefined) {
+        (nextMeta as Record<string, unknown>)[key] = value;
+      }
+    }
+  }
+
+  return {
+    ...local,
+    summary: takeSummary ? fromStore.summary || local.summary : local.summary,
+    captureMeta: nextMeta,
+  };
 }

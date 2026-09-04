@@ -41,9 +41,34 @@ Rules:
 - Prefer values clearly readable on the card.
 - Normalize email to lowercase; keep mobile digits with optional leading +.
 - If a field is missing or unreadable, use "" and low confidence.
-- Flag truncated emails, incomplete phones, blurry text, or uncertain name/company in issues.
+- Only list issues for fields that are empty OR have confidence below 60 in this same JSON.
+- Never say a field is missing/unreadable/empty if you returned a non-empty value for it.
+- Flag truncated emails, incomplete phones, blurry overall image, or uncertain values only when confidence is low.
 - Do not invent companies or people not on the card.
 """
+
+_FIELD_ISSUE_RE = {
+    "name": re.compile(r"\bnames?\b", re.I),
+    "company": re.compile(r"\bcompan(y|ies)\b", re.I),
+    "designation": re.compile(r"\b(designation|title|role)\b", re.I),
+    "mobile": re.compile(r"\b(mobile|phone|tel)\b", re.I),
+    "email": re.compile(r"\be-?mails?\b", re.I),
+    "city": re.compile(r"\bcit(y|ies)\b", re.I),
+}
+_MISSING_CLAIM_RE = re.compile(
+    r"\b(missing|unreadable|empty|not\s+found|could\s+not|couldn'?t|absent|blank|unavailable)\b",
+    re.I,
+)
+
+_client: genai.Client | None = None
+
+
+def _get_client() -> genai.Client:
+    global _client
+    key = settings.gemini_api_key.strip()
+    if _client is None:
+        _client = genai.Client(api_key=key)
+    return _client
 
 
 def _strip_data_url(image_base64: str) -> tuple[bytes, str | None]:
@@ -74,6 +99,33 @@ def _parse_response_text(text: str) -> dict[str, Any]:
     return json.loads(cleaned)
 
 
+def _filter_stale_issues(fields: AnalyzeCardFields, issues: list[str]) -> list[str]:
+    values = {
+        "name": fields.name,
+        "company": fields.company,
+        "designation": fields.designation,
+        "mobile": fields.mobile,
+        "email": fields.email,
+        "city": fields.city,
+    }
+    kept: list[str] = []
+    for issue in issues:
+        text = issue.strip()
+        if not text:
+            continue
+        if not _MISSING_CLAIM_RE.search(text):
+            kept.append(text)
+            continue
+        drop = False
+        for key, pattern in _FIELD_ISSUE_RE.items():
+            if pattern.search(text) and values.get(key, "").strip():
+                drop = True
+                break
+        if not drop:
+            kept.append(text)
+    return kept[:8]
+
+
 def analyze_visiting_card(
     image_base64: str,
     mime_type: str = "image/jpeg",
@@ -100,7 +152,7 @@ def analyze_visiting_card(
         if ocr_text and ocr_text.strip():
             prompt += f"\n\nOCR text hint:\n{ocr_text.strip()[:4000]}"
 
-        client = genai.Client(api_key=settings.gemini_api_key.strip())
+        client = _get_client()
         response = client.models.generate_content(
             model=settings.gemini_model.strip() or "gemini-2.5-flash",
             contents=[
@@ -141,6 +193,7 @@ def analyze_visiting_card(
             email=str(payload.get("email") or "").strip().lower(),
             city=str(payload.get("city") or "").strip(),
         )
+        issues = _filter_stale_issues(fields, issues)
 
         return AnalyzeCardResponse(
             ok=True,

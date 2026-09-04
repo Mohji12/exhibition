@@ -268,11 +268,16 @@ export function VoiceRecorder({
         ) {
           autoSummaryRef.current = nextSummary;
           onSummaryChange(nextSummary);
+          toast.success("Summary ready");
+        } else {
+          toast.success("Recording saved");
         }
-      } else if (sanitizeText(summaryRef.current).toLowerCase() === "null") {
-        onSummaryChange("");
+      } else {
+        if (sanitizeText(summaryRef.current).toLowerCase() === "null") {
+          onSummaryChange("");
+        }
+        toast.success("Recording saved");
       }
-      toast.success(nextSummary || nextTranscript ? "Summary ready" : "Recording saved");
     } catch {
       onCaptureMetaChange({
         audioId,

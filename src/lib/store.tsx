@@ -41,6 +41,7 @@ type StoreValue = {
   syncing: boolean;
   lastSyncError?: string;
   saveLead: (lead: Lead) => Promise<Lead>;
+  patchLeadLocal: (id: string, patch: Partial<Lead>) => void;
   addAppointment: (a: Omit<Appointment, "id">) => Promise<void>;
   addInterest: (tag: string) => Promise<void>;
   removeInterest: (tag: string) => Promise<void>;
@@ -166,6 +167,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     [trySyncLead],
   );
+
+  const patchLeadLocal = useCallback((id: string, patch: Partial<Lead>) => {
+    const apply = (l: Lead): Lead => {
+      if (l.id !== id) return l;
+      const next: Lead = {
+        ...l,
+        ...patch,
+        id: l.id,
+        synced: false,
+      };
+      if (patch.captureMeta) {
+        next.captureMeta = { ...l.captureMeta, ...patch.captureMeta };
+      }
+      return next;
+    };
+    setLeads((prev) => prev.map(apply));
+    leadsRef.current = leadsRef.current.map(apply);
+    const next = leadsRef.current.find((l) => l.id === id);
+    if (next) {
+      pendingRef.current = upsertPendingLead(pendingRef.current, next);
+      persistQueue(pendingRef.current);
+    }
+  }, []);
 
   const addAppointment = useCallback(async (a: Omit<Appointment, "id">) => {
     const draft: Appointment = { ...a, id: `a${Date.now()}` };
@@ -435,6 +459,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       syncing,
       lastSyncError,
       saveLead,
+      patchLeadLocal,
       addAppointment,
       addInterest,
       removeInterest,
@@ -450,6 +475,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       syncing,
       lastSyncError,
       saveLead,
+      patchLeadLocal,
       addAppointment,
       addInterest,
       removeInterest,

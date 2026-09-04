@@ -1,5 +1,6 @@
 import { AlertCircle, CheckCircle2, AlertTriangle, Camera, QrCode } from "lucide-react";
 import type { CaptureVerification, FieldStatus } from "@/lib/domain/capture/verify-capture";
+import { filterStaleAiIssues } from "@/lib/domain/capture/verify-capture";
 import type { CaptureSource, Lead } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -30,7 +31,7 @@ export function VerificationPanel({ verification, lead, captureSource, onRecaptu
     seen.add(f.field);
     return ["name", "company", "designation", "mobile", "email", "city"].includes(f.field);
   });
-  const aiIssues = lead.captureMeta?.aiIssues ?? [];
+  const aiIssues = filterStaleAiIssues(lead, lead.captureMeta?.aiIssues);
   const ocrQuality = lead.captureMeta?.ocrQuality;
   const aiVerified = Boolean(lead.captureMeta?.aiVerifiedAt);
 

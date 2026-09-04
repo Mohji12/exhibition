@@ -400,6 +400,55 @@ assert("sanitizeText null", sanitizeText(null) === "");
 assert("sanitizeText 'null'", sanitizeText("null") === "");
 assert("sanitizeText keeps words", sanitizeText("hello") === "hello");
 
+console.log("\n=== filterStaleAiIssues ===\n");
+
+const FIELD_ISSUE_RE = {
+  name: /\bnames?\b/i,
+  company: /\bcompan(y|ies)\b/i,
+  designation: /\b(designation|title|role)\b/i,
+  mobile: /\b(mobile|phone|tel)\b/i,
+  email: /\be-?mails?\b/i,
+  city: /\bcit(y|ies)\b/i,
+};
+const MISSING_CLAIM_RE =
+  /\b(missing|unreadable|empty|not\s+found|could\s+not|couldn'?t|absent|blank|unavailable|no\s+\w+\s+found)\b/i;
+
+function filterStaleAiIssues(lead, issues) {
+  if (!issues?.length) return [];
+  return issues.filter((issue) => {
+    const text = String(issue || "").trim();
+    if (!text) return false;
+    if (!MISSING_CLAIM_RE.test(text)) return true;
+    for (const field of Object.keys(FIELD_ISSUE_RE)) {
+      if (!FIELD_ISSUE_RE[field].test(text)) continue;
+      const value = String(lead[field] ?? "").trim();
+      if (value) return false;
+    }
+    return true;
+  });
+}
+
+const filledLead = {
+  name: "Bharatheesha PL",
+  company: "MedoPass",
+  designation: "Co-Founder & CEO",
+  mobile: "+919999999999",
+  email: "a@b.com",
+  city: "",
+};
+const filtered = filterStaleAiIssues(filledLead, [
+  "Name is missing",
+  "Designation is missing",
+  "Mobile number is missing",
+  "Email is missing",
+  "The card lists multiple cities; BANGALORE was chosen",
+  "City not found on card",
+]);
+assert("drops Name is missing when name filled", !filtered.includes("Name is missing"));
+assert("drops Designation is missing when filled", !filtered.includes("Designation is missing"));
+assert("keeps multi-city note", filtered.some((i) => i.includes("multiple cities")));
+assert("keeps City not found when city empty", filtered.includes("City not found on card"));
+
 console.log("\n=== source parity (parse-qr.ts) ===\n");
 const parseQrSrc = readFileSync(resolve(root, "src/lib/domain/capture/parse-qr.ts"), "utf8");
 assert("parse-qr exports ok flag", parseQrSrc.includes("ok: boolean"));
@@ -411,6 +460,15 @@ assert("validation sanitizes null before parse", validationSrc.includes("sanitiz
 assert("validation coerces null strings", validationSrc.includes("asOptionalString"));
 assert("validation drops null captureMeta entries", validationSrc.includes("v !== null && v !== undefined"));
 assert("consentAt allows null via preprocess", validationSrc.includes("consentAt: z.preprocess"));
+
+console.log("\n=== source parity (verify-capture + CardCapture fast path) ===\n");
+const verifySrc = readFileSync(resolve(root, "src/lib/domain/capture/verify-capture.ts"), "utf8");
+assert("verify exports filterStaleAiIssues", verifySrc.includes("export function filterStaleAiIssues"));
+assert("verify exports mergeStoreVoiceIntoLead", verifySrc.includes("export function mergeStoreVoiceIntoLead"));
+const cardSrc = readFileSync(resolve(root, "src/components/capture/CardCapture.tsx"), "utf8");
+assert("CardCapture reuses shared OCR worker", cardSrc.includes("recognizeWithSharedWorker"));
+assert("CardCapture skips second Gemini after fail", cardSrc.includes("geminiAttempted"));
+assert("CardCapture does not await upload on continue", cardSrc.includes("Do not await upload"));
 
 console.log("\n=== Summary ===\n");
 const ok = results.filter(Boolean).length;

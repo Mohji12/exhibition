@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Camera, RotateCcw, Upload } from "lucide-react";
-import { createWorker } from "tesseract.js";
+import { createWorker, type Worker } from "tesseract.js";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { analyzeCardCapture, uploadCardImage } from "@/lib/api/http-client";
@@ -17,10 +17,35 @@ import {
   saveLeadDraft,
 } from "@/lib/domain/capture/draft";
 import { averageConfidence, parseBusinessCardText } from "@/lib/domain/capture/parse-ocr";
-import { verifyCapturedLead } from "@/lib/domain/capture/verify-capture";
+import {
+  filterStaleAiIssues,
+  verifyCapturedLead,
+} from "@/lib/domain/capture/verify-capture";
 import { createEmptyLead } from "@/lib/domain/leads";
 import { sanitizeText } from "@/lib/domain/sanitize-text";
 import type { CaptureMeta, Lead } from "@/lib/types";
+
+let sharedOcrWorker: Promise<Worker> | null = null;
+let ocrProgressCb: ((pct: number) => void) | null = null;
+
+async function recognizeWithSharedWorker(
+  dataUrl: string,
+  onProgress: (pct: number) => void,
+): Promise<string> {
+  ocrProgressCb = onProgress;
+  if (!sharedOcrWorker) {
+    sharedOcrWorker = createWorker("eng", undefined, {
+      logger: (m) => {
+        if (m.status === "recognizing text" && typeof m.progress === "number") {
+          ocrProgressCb?.(Math.round(m.progress * 100));
+        }
+      },
+    });
+  }
+  const worker = await sharedOcrWorker;
+  const { data } = await worker.recognize(dataUrl);
+  return data.text;
+}
 
 type CardSide = "front" | "back";
 
@@ -59,11 +84,12 @@ function mergeCardFields(front: CardPreview, back?: CardPreview | null): CardPre
       confidence[key] = backScore;
     }
   }
+  const mergedLead = { ...lead, id: front.lead.id ?? back.lead.id };
   return {
-    lead: { ...lead, id: front.lead.id ?? back.lead.id },
+    lead: mergedLead,
     confidence,
     source: front.source === "gemini" || back.source === "gemini" ? "gemini" : "tesseract",
-    aiIssues: [...front.aiIssues, ...back.aiIssues],
+    aiIssues: filterStaleAiIssues(mergedLead, [...front.aiIssues, ...back.aiIssues]),
     ocrQuality: front.ocrQuality ?? back.ocrQuality,
     ocrText: [front.ocrText, back.ocrText].filter(Boolean).join("\n---\n"),
   };
@@ -132,13 +158,17 @@ export function CardCapture({ recaptureLeadId }: CardCaptureProps) {
     }
   };
 
-  const backupCardImage = async (dataUrl: string, leadId: string, which: CardSide) => {
-    const compressed = await compressDataUrl(dataUrl, 0.8, 1400);
+  const backupCardImage = async (
+    compressedDataUrl: string,
+    mimeType: string,
+    leadId: string,
+    which: CardSide,
+  ) => {
     const localKey = `card:${which}:${leadId}`;
     await putPendingCardImage({
       key: localKey,
-      imageBase64: compressed.dataUrl,
-      mimeType: compressed.mimeType,
+      imageBase64: compressedDataUrl,
+      mimeType,
       leadId,
       side: which,
       createdAt: new Date().toISOString(),
@@ -146,21 +176,19 @@ export function CardCapture({ recaptureLeadId }: CardCaptureProps) {
     const applyPending = (prev: SideState | null): SideState | null =>
       prev
         ? { ...prev, pendingKey: localKey }
-        : { preview: dataUrl, pendingKey: localKey };
+        : { preview: compressedDataUrl, pendingKey: localKey };
     if (which === "front") setFront(applyPending);
     else setBack(applyPending);
 
     if (!navigator.onLine) {
-      toast.message(
-        "Card saved on device — will upload when the connection is good.",
-      );
+      toast.message("Card saved on device — will upload when the connection is good.");
       return undefined;
     }
 
     try {
       const uploaded = await uploadCardImage({
-        imageBase64: compressed.dataUrl,
-        mimeType: compressed.mimeType,
+        imageBase64: compressedDataUrl,
+        mimeType,
       });
       if (uploaded.ok && uploaded.id) {
         await deletePendingCardImage(localKey);
@@ -181,16 +209,23 @@ export function CardCapture({ recaptureLeadId }: CardCaptureProps) {
     return undefined;
   };
 
-  const analyzeSide = async (dataUrl: string, leadId: string): Promise<CardPreview> => {
+  const analyzeSide = async (
+    dataUrl: string,
+    mimeType: string,
+    leadId: string,
+  ): Promise<CardPreview> => {
     setProgress(null);
     setStatusLabel("Reading card…");
 
+    let geminiAttempted = false;
+
     // Prefer cloud Gemini first when online (faster perceived result).
     if (navigator.onLine) {
+      geminiAttempted = true;
       try {
         const ai = await analyzeCardCapture({
           imageBase64: dataUrl,
-          mimeType: "image/jpeg",
+          mimeType,
         });
         if (ai.ok) {
           const confidence: Partial<Record<keyof Lead, number>> = {};
@@ -198,50 +233,39 @@ export function CardCapture({ recaptureLeadId }: CardCaptureProps) {
             const score = ai.fieldConfidence?.[key];
             if (typeof score === "number") confidence[key] = score;
           }
+          const lead = {
+            id: leadId,
+            name: sanitizeText(ai.fields.name) || undefined,
+            company: sanitizeText(ai.fields.company) || undefined,
+            designation: sanitizeText(ai.fields.designation) || undefined,
+            mobile: sanitizeText(ai.fields.mobile) || undefined,
+            email: sanitizeText(ai.fields.email) || undefined,
+            city: sanitizeText(ai.fields.city) || undefined,
+          };
           return {
-            lead: {
-              id: leadId,
-              name: sanitizeText(ai.fields.name) || undefined,
-              company: sanitizeText(ai.fields.company) || undefined,
-              designation: sanitizeText(ai.fields.designation) || undefined,
-              mobile: sanitizeText(ai.fields.mobile) || undefined,
-              email: sanitizeText(ai.fields.email) || undefined,
-              city: sanitizeText(ai.fields.city) || undefined,
-            },
+            lead,
             confidence,
             source: "gemini",
-            aiIssues: ai.issues ?? [],
+            aiIssues: filterStaleAiIssues(lead, ai.issues ?? []),
             ocrQuality: ai.ocrQuality,
             ocrText: "",
           };
         }
       } catch {
-        /* fall through to on-device OCR */
+        /* fall through to on-device OCR — do not call Gemini again */
       }
     }
 
     setProgress(0);
     setStatusLabel("Reading card on device…");
-    const worker = await createWorker("eng", undefined, {
-      logger: (m) => {
-        if (m.status === "recognizing text" && typeof m.progress === "number") {
-          setProgress(Math.round(m.progress * 100));
-        }
-      },
-    });
-    let localText = "";
-    try {
-      const { data } = await worker.recognize(dataUrl);
-      localText = data.text;
-    } finally {
-      await worker.terminate();
-    }
+    const localText = await recognizeWithSharedWorker(dataUrl, setProgress);
 
-    if (navigator.onLine && localText.trim()) {
+    // Only try Gemini+OCR when we never attempted Gemini (was offline at capture).
+    if (!geminiAttempted && navigator.onLine && localText.trim()) {
       try {
         const ai = await analyzeCardCapture({
           imageBase64: dataUrl,
-          mimeType: "image/jpeg",
+          mimeType,
           ocrText: localText,
         });
         if (ai.ok) {
@@ -250,19 +274,20 @@ export function CardCapture({ recaptureLeadId }: CardCaptureProps) {
             const score = ai.fieldConfidence?.[key];
             if (typeof score === "number") confidence[key] = score;
           }
+          const lead = {
+            id: leadId,
+            name: sanitizeText(ai.fields.name) || undefined,
+            company: sanitizeText(ai.fields.company) || undefined,
+            designation: sanitizeText(ai.fields.designation) || undefined,
+            mobile: sanitizeText(ai.fields.mobile) || undefined,
+            email: sanitizeText(ai.fields.email) || undefined,
+            city: sanitizeText(ai.fields.city) || undefined,
+          };
           return {
-            lead: {
-              id: leadId,
-              name: sanitizeText(ai.fields.name) || undefined,
-              company: sanitizeText(ai.fields.company) || undefined,
-              designation: sanitizeText(ai.fields.designation) || undefined,
-              mobile: sanitizeText(ai.fields.mobile) || undefined,
-              email: sanitizeText(ai.fields.email) || undefined,
-              city: sanitizeText(ai.fields.city) || undefined,
-            },
+            lead,
             confidence,
             source: "gemini",
-            aiIssues: ai.issues ?? [],
+            aiIssues: filterStaleAiIssues(lead, ai.issues ?? []),
             ocrQuality: ai.ocrQuality,
             ocrText: localText,
           };
@@ -290,8 +315,15 @@ export function CardCapture({ recaptureLeadId }: CardCaptureProps) {
     const draftLead = draftLeadId ? { id: draftLeadId } : createEmptyLead();
     if (!draftLeadId) setDraftLeadId(draftLead.id);
 
-    const backupPromise = backupCardImage(dataUrl, draftLead.id, which).catch(() => undefined);
-    const sideState: SideState = { preview: dataUrl, backupPromise };
+    setStatusLabel("Preparing image…");
+    const compressed = await compressDataUrl(dataUrl, 0.8, 1400);
+    const imageUrl = compressed.dataUrl;
+    const mimeType = compressed.mimeType;
+
+    const backupPromise = backupCardImage(imageUrl, mimeType, draftLead.id, which).catch(
+      () => undefined,
+    );
+    const sideState: SideState = { preview: imageUrl, backupPromise };
     if (which === "front") {
       setFront(sideState);
       setBack(null);
@@ -302,7 +334,7 @@ export function CardCapture({ recaptureLeadId }: CardCaptureProps) {
     }
 
     try {
-      const result = await analyzeSide(dataUrl, draftLead.id);
+      const result = await analyzeSide(imageUrl, mimeType, draftLead.id);
       if (which === "front") {
         setParsedPreview(result);
         setAwaitingBackChoice(true);
@@ -340,7 +372,7 @@ export function CardCapture({ recaptureLeadId }: CardCaptureProps) {
     reader.readAsDataURL(file);
   };
 
-  const continueToForm = async () => {
+  const continueToForm = () => {
     if (!parsedPreview) return;
     const recaptureBase = loadRecaptureBase();
     const base = recaptureBase ?? createEmptyLead();
@@ -348,10 +380,13 @@ export function CardCapture({ recaptureLeadId }: CardCaptureProps) {
       recaptureLeadId ?? draftLeadId ?? parsedPreview.lead.id ?? recaptureBase?.id ?? base.id;
     const returnLeadId = recaptureBase || recaptureLeadId ? leadId : "new";
 
-    let frontId = front?.imageId;
-    let backId = back?.imageId;
-    if (front?.backupPromise) frontId = (await front.backupPromise) ?? frontId;
-    if (back?.backupPromise) backId = (await back.backupPromise) ?? backId;
+    // Do not await upload — navigate immediately; backupPromise finishes in background.
+    const frontId = front?.imageId;
+    const backId = back?.imageId;
+    const uploadPending = Boolean(
+      (!frontId && (front?.pendingKey || front?.backupPromise)) ||
+        (!backId && back && (back.pendingKey || back.backupPromise)),
+    );
 
     const merged: Lead = {
       ...base,
@@ -377,7 +412,7 @@ export function CardCapture({ recaptureLeadId }: CardCaptureProps) {
       ocrText: parsedPreview.ocrText,
       ocrConfidence,
       verifiedAt: new Date().toISOString(),
-      processingNote: !frontId,
+      processingNote: uploadPending || !frontId,
     };
     if (Object.keys(parsedPreview.confidence).length > 0) {
       nextMeta.fieldConfidence = parsedPreview.confidence as CaptureMeta["fieldConfidence"];
@@ -386,7 +421,7 @@ export function CardCapture({ recaptureLeadId }: CardCaptureProps) {
     if (backId) nextMeta.cardImageIdBack = backId;
     if (parsedPreview.source === "gemini") {
       nextMeta.aiVerifiedAt = new Date().toISOString();
-      nextMeta.aiIssues = parsedPreview.aiIssues;
+      nextMeta.aiIssues = filterStaleAiIssues(merged, parsedPreview.aiIssues);
       if (parsedPreview.ocrQuality) nextMeta.ocrQuality = parsedPreview.ocrQuality;
     }
 
@@ -400,7 +435,7 @@ export function CardCapture({ recaptureLeadId }: CardCaptureProps) {
     });
     clearRecaptureBase();
 
-    if (!frontId) {
+    if (uploadPending || !frontId) {
       toast.message(
         "Processing may take a moment. Save the lead now — we keep the card as backup and finish when the connection is good.",
       );

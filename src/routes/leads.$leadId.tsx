@@ -21,6 +21,7 @@ import {
 } from "@/lib/domain/capture/draft";
 import {
   fieldStatusMap,
+  mergeStoreVoiceIntoLead,
   verifyCapturedLead,
 } from "@/lib/domain/capture/verify-capture";
 import {
@@ -80,7 +81,7 @@ const FORM_FIELDS = [
 function LeadDetailPage() {
   const { leadId } = useParams({ from: "/leads/$leadId" });
   const { source } = Route.useSearch();
-  const { leads, interests, saveLead, seedSource } = useStore();
+  const { leads, interests, saveLead, patchLeadLocal, seedSource } = useStore();
   const navigate = useNavigate();
   const { lead: initial, isNew } = resolveLeadForRoute(leadId, leads);
   const [lead, setLead] = useState<Lead>(() =>
@@ -143,6 +144,19 @@ function LeadDetailPage() {
       if (!preserveLocalRef.current) {
         setLead(existing);
         setCaptureSource(existing.captureSource ?? source);
+      } else {
+        setLead((prev) => {
+          const next = mergeStoreVoiceIntoLead(prev, existing);
+          if (
+            next.summary === prev.summary &&
+            next.captureMeta?.voiceStatus === prev.captureMeta?.voiceStatus &&
+            next.captureMeta?.transcript === prev.captureMeta?.transcript &&
+            next.captureMeta?.audioId === prev.captureMeta?.audioId
+          ) {
+            return prev;
+          }
+          return next;
+        });
       }
       draftLoaded.current = true;
       return;
@@ -381,14 +395,18 @@ function LeadDetailPage() {
           summary={lead.summary}
           consentAt={lead.consentAt}
           captureMeta={lead.captureMeta}
-          onSummaryChange={(summary) => set("summary", summary)}
+          onSummaryChange={(summary) => {
+            set("summary", summary);
+            patchLeadLocal(lead.id, { summary });
+          }}
           onConsentChange={(consentAt) => set("consentAt", consentAt)}
-          onCaptureMetaChange={(patch) =>
+          onCaptureMetaChange={(patch) => {
             setLead((prev) => ({
               ...prev,
               captureMeta: { ...prev.captureMeta, ...patch },
-            }))
-          }
+            }));
+            patchLeadLocal(lead.id, { captureMeta: { ...lead.captureMeta, ...patch } });
+          }}
         />
       </div>
 
