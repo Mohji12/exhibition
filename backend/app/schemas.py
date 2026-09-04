@@ -153,9 +153,41 @@ class AuthUserOut(CamelModel):
     designation: str | None = None
     mobile: str | None = None
     share_token: str | None = None
+    login_pin_plain: str | None = None
+    last_login_at: datetime | None = None
     created_at: datetime | None = None
     activated_at: datetime | None = None
     leads_captured: int = 0
+
+
+class ForgotPinRequest(CamelModel):
+    email: EmailStr
+
+
+class ForgotPinResponse(CamelModel):
+    ok: bool
+    message: str
+
+
+class ResetPinResponse(CamelModel):
+    ok: bool
+    pin: str
+    emailed: bool = False
+    message: str | None = None
+    user: AuthUserOut | None = None
+
+
+class TranscribeRequest(CamelModel):
+    audio_base64: str = Field(min_length=8)
+    mime_type: str = "audio/webm"
+    transcript_hint: str | None = None
+
+
+class TranscribeResponse(CamelModel):
+    ok: bool
+    transcript: str = ""
+    summary: str = ""
+    error: str | None = None
 
 
 class AuthResponse(CamelModel):

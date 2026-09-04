@@ -59,7 +59,7 @@ export function AppShell({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[11px] uppercase tracking-[0.18em] text-primary-foreground/70">
-                Conninter · MEDICON 2026
+                FUNNEL · MEDICON 2026
               </p>
               <h1 className="mt-0.5 text-xl font-semibold">{title}</h1>
               {subtitle ? (
@@ -80,7 +80,21 @@ export function AppShell({
           </div>
         </header>
 
-        <main className="flex-1 px-4 pb-28 pt-4">{children}</main>
+        <main className="flex-1 px-4 pb-28 pt-4">
+          {session?.user.role === "Rep" &&
+          !(session.user.company?.trim() && session.user.mobile?.trim()) ? (
+            <Link
+              to="/profile"
+              className="mb-4 block rounded-xl border border-primary/20 bg-primary-soft px-4 py-3 text-sm text-primary"
+            >
+              <span className="font-semibold">Complete your booth profile</span>
+              <span className="mt-0.5 block text-xs text-primary/80">
+                Add company and mobile — or scan your visiting card on Profile.
+              </span>
+            </Link>
+          ) : null}
+          {children}
+        </main>
 
         <nav className="sticky bottom-0 z-20 border-t border-border bg-card/95 backdrop-blur">
           <div className="flex items-stretch justify-between px-2 py-2">

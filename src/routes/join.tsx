@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ShieldCheck, Stethoscope } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { activateAccount, lookupInvite } from "@/lib/api/http-client";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ export const Route = createFileRoute("/join")({
   }),
   head: () => ({
     meta: [
-      { title: "Activate account — Conninter Visitor Book" },
+      { title: "Activate account — FUNNEL by Conninter" },
       {
         name: "description",
         content: "Activate your exhibitor account with the PIN shown next to the admin QR.",
@@ -63,12 +63,10 @@ function JoinPage() {
     <div className="flex min-h-screen items-center justify-center bg-[image:var(--gradient-brand)] px-5 py-10">
       <div className="w-full max-w-[430px] rounded-3xl bg-card p-7 shadow-float">
         <div className="flex items-center gap-3">
-          <div className="grid size-11 place-items-center rounded-2xl bg-primary text-primary-foreground">
-            <Stethoscope className="size-6" />
-          </div>
+          <img src="/brand/conninter-logo.png" alt="Conninter" className="h-11 w-auto max-w-[160px] object-contain" />
           <div>
-            <p className="text-lg font-semibold tracking-tight text-foreground">CONNINTER</p>
-            <p className="text-xs text-muted-foreground">Activate exhibitor account</p>
+            <p className="text-lg font-semibold tracking-tight text-foreground">FUNNEL</p>
+            <p className="text-xs text-muted-foreground">by Conninter · Activate exhibitor</p>
           </div>
         </div>
 
@@ -101,7 +99,7 @@ function JoinPage() {
               })
                 .then((session) => {
                   setSession(session);
-                  void navigate({ to: "/capture" });
+                  void navigate({ to: "/profile" });
                 })
                 .catch((err: unknown) => {
                   setError(err instanceof Error ? err.message : "Activation failed");
@@ -127,7 +125,7 @@ function JoinPage() {
                 autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@conninter.com"
+                placeholder="you@example.com"
                 required
               />
             </div>

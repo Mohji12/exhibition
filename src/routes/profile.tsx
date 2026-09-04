@@ -1,23 +1,26 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { CreditCard, LayoutDashboard, LogOut } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Camera, CreditCard, LayoutDashboard, LogOut, Upload } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createWorker } from "tesseract.js";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { patchMyProfile } from "@/lib/api/http-client";
+import { analyzeCardCapture, patchMyProfile } from "@/lib/api/http-client";
 import { useAuth } from "@/lib/auth";
+import { compressDataUrl } from "@/lib/domain/capture/card-image-store";
+import { parseBusinessCardText } from "@/lib/domain/capture/parse-ocr";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/profile")({
   head: () => ({
     meta: [
-      { title: "Profile — Conninter Visitor Book" },
+      { title: "Profile — FUNNEL by Conninter" },
       {
         name: "description",
-        content: "Edit your Conninter booth profile and sign out.",
+        content: "Edit your FUNNEL booth profile and sign out.",
       },
     ],
   }),
@@ -38,6 +41,11 @@ function ProfilePage() {
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [cameraOn, setCameraOn] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -47,6 +55,117 @@ function ProfilePage() {
     setDesignation(user.designation ?? "");
     setMobile(user.mobile ?? "");
   }, [user]);
+
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCameraOn(false);
+  }, []);
+
+  useEffect(() => () => stopCamera(), [stopCamera]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    const stream = streamRef.current;
+    if (!cameraOn || !video || !stream) return;
+    video.srcObject = stream;
+    void video.play().catch(() => toast.error("Could not start camera"));
+    return () => {
+      video.srcObject = null;
+    };
+  }, [cameraOn]);
+
+  const applyCardFields = (fields: {
+    name?: string;
+    company?: string;
+    designation?: string;
+    mobile?: string;
+    email?: string;
+  }) => {
+    if (fields.name?.trim()) setName(fields.name.trim());
+    if (fields.company?.trim()) setCompany(fields.company.trim());
+    if (fields.designation?.trim()) setDesignation(fields.designation.trim());
+    if (fields.mobile?.trim()) setMobile(fields.mobile.trim());
+    if (fields.email?.trim()) setEmail(fields.email.trim());
+    setEditing(true);
+    toast.success("Card details filled — review and save");
+  };
+
+  const processImage = async (dataUrl: string) => {
+    setScanning(true);
+    try {
+      const compressed = await compressDataUrl(dataUrl);
+      const worker = await createWorker("eng");
+      const result = await worker.recognize(compressed);
+      await worker.terminate();
+      const text = result.data.text || "";
+      const parsed = parseBusinessCardText(text);
+      let fields = {
+        name: parsed.lead.name,
+        company: parsed.lead.company,
+        designation: parsed.lead.designation,
+        mobile: parsed.lead.mobile,
+        email: parsed.lead.email,
+      };
+      try {
+        const base64 = compressed.includes(",") ? compressed.split(",")[1]! : compressed;
+        const ai = await analyzeCardCapture({
+          imageBase64: base64,
+          mimeType: "image/jpeg",
+          ocrText: text,
+        });
+        if (ai.ok && ai.fields) {
+          fields = {
+            name: ai.fields.name || fields.name,
+            company: ai.fields.company || fields.company,
+            designation: ai.fields.designation || fields.designation,
+            mobile: ai.fields.mobile || fields.mobile,
+            email: ai.fields.email || fields.email,
+          };
+        }
+      } catch {
+        /* local OCR is enough */
+      }
+      applyCardFields(fields);
+      stopCamera();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Could not read the card");
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const startCamera = async () => {
+    stopCamera();
+    try {
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false,
+        });
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
+      streamRef.current = stream;
+      setCameraOn(true);
+    } catch {
+      toast.error("Camera permission denied");
+    }
+  };
+
+  const captureFrame = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0);
+    void processImage(canvas.toDataURL("image/jpeg", 0.92));
+  };
 
   const save = async () => {
     setBusy(true);
@@ -85,7 +204,11 @@ function ProfilePage() {
                 {user.designation ? <p>{user.designation}</p> : null}
                 {user.mobile ? <p>{user.mobile}</p> : null}
               </div>
-            ) : null}
+            ) : (
+              <p className="mt-2 text-sm text-warning-foreground">
+                Add company and mobile so visitors see a complete card.
+              </p>
+            )}
             <span
               className={cn(
                 "mt-3 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold",
@@ -110,12 +233,7 @@ function ProfilePage() {
             <h2 className="text-sm font-semibold text-foreground">Edit profile</h2>
             <div className="space-y-1.5">
               <Label htmlFor="profile-name">Name</Label>
-              <Input
-                id="profile-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="h-11 rounded-xl"
-              />
+              <Input id="profile-name" value={name} onChange={(e) => setName(e.target.value)} className="h-11 rounded-xl" />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="profile-email">Email</Label>
@@ -193,6 +311,65 @@ function ProfilePage() {
           </div>
         ) : null}
 
+        <div className="mt-4 rounded-xl border border-dashed border-border p-3">
+          <p className="text-sm font-semibold text-foreground">Scan my visiting card</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Autofill name, company, designation, mobile, and email from your card.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 rounded-xl"
+              disabled={scanning}
+              onClick={() => void startCamera()}
+            >
+              <Camera className="size-4" />
+              Camera
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 rounded-xl"
+              disabled={scanning}
+              onClick={() => fileRef.current?.click()}
+            >
+              <Upload className="size-4" />
+              Upload
+            </Button>
+          </div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = () => {
+                if (typeof reader.result === "string") void processImage(reader.result);
+              };
+              reader.readAsDataURL(file);
+            }}
+          />
+          {scanning ? <p className="mt-2 text-xs text-muted-foreground">Reading card…</p> : null}
+          {cameraOn ? (
+            <div className="mt-3 space-y-2">
+              <video ref={videoRef} playsInline muted className="w-full rounded-xl bg-black" />
+              <div className="flex gap-2">
+                <Button className="h-10 flex-1 rounded-xl" onClick={captureFrame} disabled={scanning}>
+                  Capture
+                </Button>
+                <Button type="button" variant="outline" className="h-10 rounded-xl" onClick={stopCamera}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
         <Button asChild variant="outline" className="mt-3 h-11 w-full rounded-xl">
           <Link to="/card">
             <CreditCard className="size-4" />
@@ -224,16 +401,15 @@ function ProfilePage() {
       </section>
 
       <section className="mt-4 rounded-xl border border-border bg-card p-4 shadow-card">
-        <h2 className="text-sm font-semibold text-foreground">Data source</h2>
+        <h2 className="text-sm font-semibold text-foreground">Connection</h2>
         <p className="mt-2 text-xs text-muted-foreground">
-          {seedSource === "loading" && "Loading data from FastAPI backend…"}
+          {seedSource === "loading" && "Connecting…"}
           {seedSource === "api" &&
-            "Connected to FastAPI backend. Saves upload immediately when online; pending leads sync on reconnect or via Sync."}
-          {seedSource === "error" &&
-            "Could not reach the FastAPI backend. Start the backend and check VITE_API_URL."}
+            "Online. Saves upload immediately; pending leads sync on reconnect or via Sync."}
+          {seedSource === "error" && "Could not reach the server. Check your connection and try again."}
         </p>
         {lastSyncError ? (
-          <p className="mt-2 text-xs text-destructive">Last sync issue: {lastSyncError}</p>
+          <p className="mt-2 text-xs text-destructive">Last sync issue: something went wrong. Try Sync again.</p>
         ) : null}
       </section>
     </AppShell>

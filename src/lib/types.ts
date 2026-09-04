@@ -63,6 +63,8 @@ export type AuthUser = {
   designation?: string | null;
   mobile?: string | null;
   shareToken?: string | null;
+  loginPinPlain?: string | null;
+  lastLoginAt?: string | null;
   createdAt?: string | null;
   activatedAt?: string | null;
   leadsCaptured?: number;

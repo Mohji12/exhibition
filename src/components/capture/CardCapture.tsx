@@ -158,7 +158,7 @@ export function CardCapture() {
     }
 
     setProgress(null);
-    setStatusLabel("Validating with AI…");
+    setStatusLabel("Reading card…");
 
     try {
       const ai = await analyzeCardCapture({
@@ -192,12 +192,9 @@ export function CardCapture() {
         return;
       }
 
-      toast.message("AI unavailable — using local OCR", {
-        description: ai.error ?? undefined,
-      });
-    } catch (error) {
-      console.warn(error);
-      toast.message("AI unavailable — using local OCR");
+      toast.message("Using on-device card reading");
+    } catch {
+      toast.message("Using on-device card reading");
     }
 
     const parsed = parseBusinessCardText(localText);
@@ -343,7 +340,7 @@ export function CardCapture() {
                   <p className="text-xs">{parsedPreview.lead.email}</p>
                 </div>
                 <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                  {parsedPreview.source === "gemini" ? "AI verified" : "Local OCR"}
+                  {parsedPreview.source === "gemini" ? "Verified" : "On-device read"}
                 </span>
               </div>
               {parsedPreview.ocrQuality && (

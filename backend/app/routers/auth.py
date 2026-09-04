@@ -10,12 +10,15 @@ from app.schemas import (
     ActivateRequest,
     AuthResponse,
     AuthUserOut,
+    ForgotPinRequest,
+    ForgotPinResponse,
     InviteStatus,
     LoginRequest,
     PatchMeRequest,
 )
 from app.security import (
     check_rate_limit,
+    generate_pin,
     generate_token,
     hash_pin,
     issue_jwt,
@@ -24,16 +27,17 @@ from app.security import (
     verify_pin,
     CurrentUser,
 )
+from app.services.mail import mail_configured, send_pin_email
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 _USER_COLS = (
     "id, name, email, role, status, company, designation, mobile, share_token, "
-    "created_at, activated_at"
+    "login_pin_plain, last_login_at, created_at, activated_at"
 )
 
 
-def _row_to_user(row: dict, leads_captured: int = 0) -> AuthUserOut:
+def _row_to_user(row: dict, leads_captured: int = 0, include_pin: bool = False) -> AuthUserOut:
     return AuthUserOut(
         id=row["id"],
         name=row["name"],
@@ -44,6 +48,8 @@ def _row_to_user(row: dict, leads_captured: int = 0) -> AuthUserOut:
         designation=row.get("designation"),
         mobile=row.get("mobile"),
         share_token=row.get("share_token"),
+        login_pin_plain=row.get("login_pin_plain") if include_pin else None,
+        last_login_at=row.get("last_login_at"),
         created_at=row.get("created_at"),
         activated_at=row.get("activated_at"),
         leads_captured=leads_captured,
@@ -51,7 +57,7 @@ def _row_to_user(row: dict, leads_captured: int = 0) -> AuthUserOut:
 
 
 def _auth_response(row: dict) -> AuthResponse:
-    user_out = _row_to_user(row)
+    user_out = _row_to_user(row, include_pin=False)
     current = CurrentUser(
         id=row["id"],
         name=row["name"],
@@ -77,14 +83,25 @@ def login(body: LoginRequest) -> AuthResponse:
         )
         row = cur.fetchone()
 
-    if (
-        not row
-        or row["status"] != "active"
-        or not verify_pin(body.pin, row["pin_hash"])
-    ):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or PIN")
+        if (
+            not row
+            or row["status"] != "active"
+            or not verify_pin(body.pin, row["pin_hash"])
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or PIN",
+            )
 
-    return _auth_response(row)
+        cur.execute(
+            "UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = %s",
+            (row["id"],),
+        )
+        conn.commit()
+        cur.execute(f"SELECT {_USER_COLS} FROM users WHERE id = %s", (row["id"],))
+        updated = cur.fetchone()
+
+    return _auth_response(updated)
 
 
 @router.get("/invite/{token}", response_model=InviteStatus)
@@ -93,7 +110,10 @@ def lookup_invite(token: str) -> InviteStatus:
         cur.execute("SELECT token FROM invites WHERE token = %s", (token,))
         row = cur.fetchone()
     if not row:
-        return InviteStatus(ok=False, error="This invite is no longer valid. Ask an admin for a new QR.")
+        return InviteStatus(
+            ok=False,
+            error="This invite is no longer valid. Ask an admin for a new QR.",
+        )
     return InviteStatus(ok=True)
 
 
@@ -120,25 +140,71 @@ def activate(body: ActivateRequest) -> AuthResponse:
                 detail="PIN expired. Ask the admin to refresh it.",
             )
         if not verify_pin(body.pin, invite["pin_hash"]):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect activation PIN")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect activation PIN",
+            )
 
         cur.execute("SELECT id FROM users WHERE email = %s", (email,))
         if cur.fetchone():
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An account with this email already exists")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An account with this email already exists",
+            )
 
         user_id = str(uuid.uuid4())
         cur.execute(
             """
-            INSERT INTO users (id, name, email, pin_hash, role, status, activated_at, share_token)
-            VALUES (%s, %s, %s, %s, 'Rep', 'active', CURRENT_TIMESTAMP, %s)
+            INSERT INTO users (
+              id, name, email, pin_hash, role, status, activated_at, share_token, login_pin_plain, last_login_at
+            )
+            VALUES (%s, %s, %s, %s, 'Rep', 'active', CURRENT_TIMESTAMP, %s, %s, CURRENT_TIMESTAMP)
             """,
-            (user_id, name, email, hash_pin(body.login_pin), generate_token()),
+            (
+                user_id,
+                name,
+                email,
+                hash_pin(body.login_pin),
+                generate_token(),
+                body.login_pin,
+            ),
         )
         conn.commit()
         cur.execute(f"SELECT {_USER_COLS} FROM users WHERE id = %s", (user_id,))
         row = cur.fetchone()
 
     return _auth_response(row)
+
+
+@router.post("/forgot-pin", response_model=ForgotPinResponse)
+def forgot_pin(body: ForgotPinRequest) -> ForgotPinResponse:
+    email = str(body.email).strip().lower()
+    check_rate_limit(f"forgot:{email}")
+    generic = (
+        "If that account exists, a new PIN was prepared. "
+        "Check email when enabled, or ask your admin."
+    )
+
+    with get_connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"SELECT {_USER_COLS} FROM users WHERE email = %s AND status = 'active'",
+            (email,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return ForgotPinResponse(ok=True, message=generic)
+
+        pin = generate_pin()
+        cur.execute(
+            "UPDATE users SET pin_hash = %s, login_pin_plain = %s WHERE id = %s",
+            (hash_pin(pin), pin, row["id"]),
+        )
+        conn.commit()
+
+    if mail_configured():
+        send_pin_email(email, row["name"], pin)
+
+    return ForgotPinResponse(ok=True, message=generic)
 
 
 @router.patch("/me", response_model=AuthResponse)
@@ -176,7 +242,10 @@ def patch_me(
         if new_email != row["email"]:
             cur.execute("SELECT id FROM users WHERE email = %s AND id <> %s", (new_email, user.id))
             if cur.fetchone():
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already in use")
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Email already in use",
+                )
 
         sets = [
             "name = %s",
@@ -185,10 +254,18 @@ def patch_me(
             "designation = %s",
             "mobile = %s",
         ]
-        params: list = [new_name, new_email, new_company or None, new_designation or None, new_mobile or None]
+        params: list = [
+            new_name,
+            new_email,
+            new_company or None,
+            new_designation or None,
+            new_mobile or None,
+        ]
         if body.login_pin:
             sets.append("pin_hash = %s")
             params.append(hash_pin(body.login_pin))
+            sets.append("login_pin_plain = %s")
+            params.append(body.login_pin)
         params.append(user.id)
         cur.execute(f"UPDATE users SET {', '.join(sets)} WHERE id = %s", params)
         conn.commit()

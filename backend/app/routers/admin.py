@@ -25,6 +25,7 @@ from app.schemas import (
     PatchAppointmentRequest,
     PatchUserRequest,
     Priority,
+    ResetPinResponse,
 )
 from app.security import (
     PIN_TTL_SECONDS,
@@ -35,6 +36,7 @@ from app.security import (
     require_admin,
     utcnow,
 )
+from app.services.mail import mail_configured, send_pin_email
 
 router = APIRouter(
     prefix="/api/admin",
@@ -54,6 +56,8 @@ def _user_out(row: dict) -> AuthUserOut:
         designation=row.get("designation"),
         mobile=row.get("mobile"),
         share_token=row.get("share_token"),
+        login_pin_plain=row.get("login_pin_plain"),
+        last_login_at=row.get("last_login_at"),
         created_at=row.get("created_at"),
         activated_at=row.get("activated_at"),
         leads_captured=int(row.get("leads_captured") or 0),
@@ -63,7 +67,7 @@ def _user_out(row: dict) -> AuthUserOut:
 _USER_WITH_COUNTS_SQL = """
             SELECT
               u.id, u.name, u.email, u.role, u.status, u.company, u.designation, u.mobile,
-              u.share_token, u.created_at, u.activated_at,
+              u.share_token, u.login_pin_plain, u.last_login_at, u.created_at, u.activated_at,
               COUNT(l.id) AS leads_captured
             FROM users u
             LEFT JOIN leads l ON l.captured_by = u.id
@@ -381,6 +385,8 @@ def patch_user(
         if body.login_pin:
             sets.append("pin_hash = %s")
             params.append(hash_pin(body.login_pin))
+            sets.append("login_pin_plain = %s")
+            params.append(body.login_pin)
         params.append(user_id)
         cur.execute(f"UPDATE users SET {', '.join(sets)} WHERE id = %s", params)
         conn.commit()
@@ -396,6 +402,42 @@ def get_user(user_id: str) -> AuthUserOut:
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return _user_out(row)
+
+
+@router.post("/users/{user_id}/reset-pin", response_model=ResetPinResponse)
+def reset_user_pin(
+    user_id: str,
+    email: bool = Query(default=False),
+) -> ResetPinResponse:
+    pin = generate_pin()
+    with get_connection() as conn, conn.cursor() as cur:
+        row = _get_user_row(cur, user_id)
+        if not row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        cur.execute(
+            "UPDATE users SET pin_hash = %s, login_pin_plain = %s WHERE id = %s",
+            (hash_pin(pin), pin, user_id),
+        )
+        conn.commit()
+        updated = _get_user_row(cur, user_id)
+
+    emailed = False
+    message = "New PIN ready — share it with the exhibitor"
+    if email:
+        if mail_configured():
+            ok, msg = send_pin_email(str(updated["email"]), updated["name"], pin)
+            emailed = ok
+            message = msg if ok else "PIN reset, but email could not be sent — copy it manually"
+        else:
+            message = "Email not configured yet — copy the PIN and share it manually"
+
+    return ResetPinResponse(
+        ok=True,
+        pin=pin,
+        emailed=emailed,
+        message=message,
+        user=_user_out(updated),
+    )
 
 
 @router.delete("/users/{user_id}")

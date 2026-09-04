@@ -6,6 +6,7 @@ import {
   fetchAdminLeads,
   fetchAdminUser,
   patchAdminUser,
+  resetAdminUserPin,
 } from "@/lib/api/http-client";
 import { useAuth } from "@/lib/auth";
 import type { AuthUser, Lead } from "@/lib/types";
@@ -34,6 +35,7 @@ function ClientDetailPage() {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [shownPin, setShownPin] = useState("");
 
   useEffect(() => {
     if (!ready || session?.user.role !== "Admin") return;
@@ -47,6 +49,7 @@ function ClientDetailPage() {
         setCompany(nextUser.company ?? "");
         setDesignation(nextUser.designation ?? "");
         setMobile(nextUser.mobile ?? "");
+        setShownPin(nextUser.loginPinPlain ?? "");
         setLeads(nextLeads);
       })
       .catch((err: unknown) => {
@@ -163,6 +166,84 @@ function ClientDetailPage() {
             className="h-11 rounded-xl"
           />
         </div>
+
+        <div className="rounded-xl border border-border bg-secondary/40 p-3">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Login PIN</p>
+          <p className="mt-1 font-semibold tabular-nums tracking-[0.2em] text-foreground">
+            {shownPin || user?.loginPinPlain || "Not available — reset to generate"}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="rounded-lg"
+              disabled={busy || !user}
+              onClick={() => {
+                if (!user) return;
+                setBusy(true);
+                void resetAdminUserPin(user.id, false)
+                  .then((res) => {
+                    setShownPin(res.pin);
+                    if (res.user) setUser(res.user);
+                    toast.success(res.message || `New PIN: ${res.pin}`);
+                  })
+                  .catch((err: unknown) =>
+                    toast.error(err instanceof Error ? err.message : "Reset failed"),
+                  )
+                  .finally(() => setBusy(false));
+              }}
+            >
+              Reset PIN
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="rounded-lg"
+              disabled={busy || !user}
+              onClick={() => {
+                if (!user) return;
+                setBusy(true);
+                void resetAdminUserPin(user.id, true)
+                  .then((res) => {
+                    setShownPin(res.pin);
+                    if (res.user) setUser(res.user);
+                    toast.message(res.message || `PIN: ${res.pin}`);
+                  })
+                  .catch((err: unknown) =>
+                    toast.error(err instanceof Error ? err.message : "Could not email PIN"),
+                  )
+                  .finally(() => setBusy(false));
+              }}
+            >
+              Email new PIN
+            </Button>
+            {(shownPin || user?.loginPinPlain) ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="rounded-lg"
+                onClick={() => {
+                  const value = shownPin || user?.loginPinPlain || "";
+                  void navigator.clipboard.writeText(value);
+                  toast.success("PIN copied");
+                }}
+              >
+                Copy PIN
+              </Button>
+            ) : null}
+          </div>
+          {user?.lastLoginAt ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Last login: {new Date(user.lastLoginAt).toLocaleString()}
+            </p>
+          ) : (
+            <p className="mt-2 text-xs text-muted-foreground">No login recorded yet</p>
+          )}
+        </div>
+
         <div className="space-y-1.5">
           <Label htmlFor="pin">New 4-digit PIN (optional)</Label>
           <Input

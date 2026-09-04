@@ -103,20 +103,32 @@ def _ensure_user_profile_columns(cur) -> None:
         )
     if missing:
         logger.info("Backfilled share_token for %s user(s)", len(missing))
+    if not _column_exists(cur, "users", "login_pin_plain"):
+        cur.execute("ALTER TABLE users ADD COLUMN login_pin_plain VARCHAR(4) NULL")
+        logger.info("Added users.login_pin_plain column")
+    if not _column_exists(cur, "users", "last_login_at"):
+        cur.execute("ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP NULL")
+        logger.info("Added users.last_login_at column")
 
 
 def _ensure_user(cur, name: str, email: str, pin: str, role: str) -> str:
     cur.execute("SELECT id FROM users WHERE email = %s", (email,))
     row = cur.fetchone()
     if row:
+        # Keep recoverable PIN in sync for bootstrap admin when known.
+        if pin and _column_exists(cur, "users", "login_pin_plain"):
+            cur.execute(
+                "UPDATE users SET pin_hash = %s, login_pin_plain = %s WHERE id = %s",
+                (hash_pin(pin), pin, row["id"]),
+            )
         return row["id"]
     user_id = str(uuid.uuid4())
     cur.execute(
         """
-        INSERT INTO users (id, name, email, pin_hash, role, status, activated_at, share_token)
-        VALUES (%s, %s, %s, %s, %s, 'active', CURRENT_TIMESTAMP, %s)
+        INSERT INTO users (id, name, email, pin_hash, role, status, activated_at, share_token, login_pin_plain)
+        VALUES (%s, %s, %s, %s, %s, 'active', CURRENT_TIMESTAMP, %s, %s)
         """,
-        (user_id, name, email, hash_pin(pin), role, generate_token()),
+        (user_id, name, email, hash_pin(pin), role, generate_token(), pin),
     )
     logger.info("Bootstrapped %s account for %s", role, email)
     return user_id

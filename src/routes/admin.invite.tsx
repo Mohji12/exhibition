@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Copy, Mail, MessageCircle, MessageSquare } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
+import { toast } from "sonner";
 import { refreshInvitePin, startInvite } from "@/lib/api/http-client";
 import { useAuth } from "@/lib/auth";
 import type { InvitePin } from "@/lib/types";
@@ -8,7 +10,7 @@ import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/admin/invite")({
   head: () => ({
-    meta: [{ title: "Invite staff — Conninter" }],
+    meta: [{ title: "Invite exhibitors — FUNNEL" }],
   }),
   component: InvitePage,
 });
@@ -72,11 +74,36 @@ function InvitePage() {
     ? Math.max(0, Math.ceil((new Date(invite.expiresAt).getTime() - now) / 1000))
     : 0;
 
+  const shareText = invite
+    ? `Join FUNNEL as an exhibitor: ${joinUrl}\nActivation PIN (expires soon): ${invite.pin}`
+    : joinUrl;
+
+  const share = (channel: "WhatsApp" | "Email" | "SMS" | "Copy") => {
+    if (!joinUrl || !invite) {
+      toast.error("Invite link is not ready yet");
+      return;
+    }
+    if (channel === "Copy") {
+      void navigator.clipboard.writeText(`${joinUrl}\nPIN: ${invite.pin}`);
+      toast.success("Link and PIN copied");
+      return;
+    }
+    if (channel === "WhatsApp") {
+      window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (channel === "Email") {
+      window.location.href = `mailto:?subject=${encodeURIComponent("FUNNEL exhibitor invite")}&body=${encodeURIComponent(shareText)}`;
+      return;
+    }
+    window.location.href = `sms:?body=${encodeURIComponent(shareText)}`;
+  };
+
   return (
     <div className="mx-auto flex min-h-[70vh] max-w-xl flex-col items-center text-center">
-      <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Conninter</p>
-      <h1 className="mt-2 text-4xl font-semibold tracking-tight text-foreground">CONNINTER</h1>
-      <p className="mt-2 text-sm text-muted-foreground">Scan to register as an exhibitor</p>
+      <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">FUNNEL</p>
+      <h1 className="mt-2 text-4xl font-semibold tracking-tight text-foreground">Invite</h1>
+      <p className="mt-2 text-sm text-muted-foreground">Scan or share the link to register as an exhibitor</p>
 
       <div className="mt-8 w-full overflow-hidden rounded-3xl bg-card shadow-float">
         {qr ? (
@@ -90,6 +117,31 @@ function InvitePage() {
             Preparing QR…
           </div>
         )}
+      </div>
+
+      {joinUrl ? (
+        <p className="mt-4 w-full break-all rounded-xl border border-border bg-card px-3 py-2 text-left text-xs text-muted-foreground">
+          {joinUrl}
+        </p>
+      ) : null}
+
+      <div className="mt-3 grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
+        <Button type="button" variant="outline" className="h-10 rounded-xl" onClick={() => share("Copy")}>
+          <Copy className="size-4" />
+          Copy
+        </Button>
+        <Button type="button" variant="outline" className="h-10 rounded-xl" onClick={() => share("WhatsApp")}>
+          <MessageCircle className="size-4" />
+          WhatsApp
+        </Button>
+        <Button type="button" variant="outline" className="h-10 rounded-xl" onClick={() => share("Email")}>
+          <Mail className="size-4" />
+          Email
+        </Button>
+        <Button type="button" variant="outline" className="h-10 rounded-xl" onClick={() => share("SMS")}>
+          <MessageSquare className="size-4" />
+          SMS
+        </Button>
       </div>
 
       <p className="mt-8 text-xs uppercase tracking-[0.2em] text-muted-foreground">Activation PIN</p>

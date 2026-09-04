@@ -101,7 +101,7 @@ function AdminReportPage() {
       {generatedAt ? (
         <p className="mt-4 text-[11px] text-muted-foreground">
           Generated {new Date(generatedAt).toLocaleString()}
-          {usedAi ? " · Gemini" : " · local stats fallback"}
+          {usedAi ? "" : " · summary"}
         </p>
       ) : null}
 

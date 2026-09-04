@@ -161,7 +161,7 @@ def analyze_public_card(
     if not settings.gemini_api_key.strip():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Card analysis is not configured",
+            detail="Card scan is temporarily unavailable",
         )
 
     return analyze_visiting_card(

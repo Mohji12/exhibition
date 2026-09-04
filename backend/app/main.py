@@ -15,8 +15,8 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(
-    title="Conninter Visitor Book API",
-    description="FastAPI backend for the Conninter exhibition lead-capture app",
+    title="FUNNEL by Conninter API",
+    description="Booth lead-capture API for FUNNEL by Conninter",
     version="1.0.0",
     lifespan=lifespan,
 )

@@ -14,10 +14,12 @@ import type { SyncResult } from "@/lib/domain/sync";
 const DEFAULT_PROD_API_URL = "https://connitor.menteetracker.com";
 const DEFAULT_DEV_API_URL = "http://127.0.0.1:8000";
 
+const VENDOR_LEAK =
+  /\b(gemini|google\s*ai|tesseract|fastapi|uvicorn|traceback|vite_api|sqlalchemy|pymysql|openai)\b/i;
+
 export function getApiBase(): string {
-  const configured = import.meta.env.VITE_API_URL?.trim();
+  const configured = import.meta.env["VITE_API_URL"]?.trim();
   if (configured) return configured.replace(/\/$/, "");
-  // Local Vite/dev must not fall back to production — auth routes live on the local API.
   const base = import.meta.env.DEV ? DEFAULT_DEV_API_URL : DEFAULT_PROD_API_URL;
   return base.replace(/\/$/, "");
 }
@@ -39,12 +41,26 @@ export type ManageInterestResponse = { ok: true } | { ok: false; error: string }
 
 export type InviteLookup = { ok: boolean; error?: string | null };
 
+function friendlyError(status: number, raw: string): string {
+  const text = raw.trim();
+  if (!text || VENDOR_LEAK.test(text) || /^api request failed/i.test(text)) {
+    if (status === 401) return "Sign in failed. Check your email and PIN.";
+    if (status === 403) return "You do not have access to do that.";
+    if (status === 404) return "Not found.";
+    if (status === 409) return "That email is already in use.";
+    if (status === 429) return "Too many attempts. Try again shortly.";
+    return "Something went wrong. Please try again.";
+  }
+  return text;
+}
+
 async function readError(res: Response): Promise<string> {
+  let detail = "";
   try {
     const body = (await res.json()) as { detail?: unknown };
-    if (typeof body.detail === "string") return body.detail;
-    if (Array.isArray(body.detail)) {
-      return body.detail
+    if (typeof body.detail === "string") detail = body.detail;
+    else if (Array.isArray(body.detail)) {
+      detail = body.detail
         .map((item) => (typeof item === "object" && item && "msg" in item ? String(item.msg) : ""))
         .filter(Boolean)
         .join(" ");
@@ -52,7 +68,7 @@ async function readError(res: Response): Promise<string> {
   } catch {
     /* ignore */
   }
-  return `API request failed (${res.status})`;
+  return friendlyError(res.status, detail || `Request failed (${res.status})`);
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit, auth = true): Promise<T> {
@@ -64,7 +80,6 @@ async function apiFetch<T>(path: string, init?: RequestInit, auth = true): Promi
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
   const res = await fetch(`${getApiBase()}${path}`, { ...init, headers });
-  // Only clear a real session when the server rejected that bearer token.
   if (res.status === 401 && token) {
     clearSession();
     if (typeof window !== "undefined") {
@@ -99,6 +114,14 @@ export async function activateAccount(body: {
   return apiFetch<AuthSession>(
     "/api/auth/activate",
     { method: "POST", body: JSON.stringify(body) },
+    false,
+  );
+}
+
+export async function forgotPinRequest(email: string): Promise<{ ok: boolean; message: string }> {
+  return apiFetch<{ ok: boolean; message: string }>(
+    "/api/auth/forgot-pin",
+    { method: "POST", body: JSON.stringify({ email }) },
     false,
   );
 }
@@ -215,6 +238,17 @@ export async function fetchAdminUser(userId: string): Promise<AuthUser> {
 export async function deleteAdminUser(userId: string): Promise<{ ok: boolean }> {
   return apiFetch<{ ok: boolean }>(`/api/admin/users/${encodeURIComponent(userId)}`, {
     method: "DELETE",
+  });
+}
+
+export async function resetAdminUserPin(
+  userId: string,
+  email = false,
+): Promise<{ ok: boolean; pin: string; emailed: boolean; message?: string | null; user?: AuthUser }> {
+  const q = email ? "?email=true" : "";
+  return apiFetch(`/api/admin/users/${encodeURIComponent(userId)}/reset-pin${q}`, {
+    method: "POST",
+    body: "{}",
   });
 }
 
@@ -382,6 +416,24 @@ export async function uploadCardImage(body: {
   leadId?: string;
 }): Promise<UploadCardImageResponse> {
   return apiFetch<UploadCardImageResponse>("/api/capture/card-image", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export type TranscribeResponse = {
+  ok: boolean;
+  transcript: string;
+  summary: string;
+  error?: string | null;
+};
+
+export async function transcribeConversation(body: {
+  audioBase64: string;
+  mimeType?: string;
+  transcriptHint?: string;
+}): Promise<TranscribeResponse> {
+  return apiFetch<TranscribeResponse>("/api/capture/transcribe", {
     method: "POST",
     body: JSON.stringify(body),
   });

@@ -76,13 +76,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Conninter Visitor Book" },
+      { title: "FUNNEL by Conninter" },
       {
         name: "description",
-        content: "Lead capture for Conninter booth staff at MEDICON 2026.",
+        content: "FUNNEL by Conninter — booth lead capture for MEDICON 2026.",
       },
       { name: "author", content: "Conninter" },
-      { property: "og:title", content: "Conninter Visitor Book" },
+      { property: "og:title", content: "FUNNEL by Conninter" },
       {
         property: "og:description",
         content: "Scan delegates, capture leads and schedule follow-ups at the exhibition booth.",
