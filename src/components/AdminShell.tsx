@@ -1,6 +1,7 @@
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { CalendarRange, CalendarClock, FileChartColumn, LayoutDashboard, LayoutList, QrCode, ScanLine, Users } from "lucide-react";
 import type { ReactNode } from "react";
+import { PageLoader } from "@/components/PageLoader";
 import { useAuth } from "@/lib/auth";
 import { initials } from "@/lib/auth-session";
 import { Button } from "@/components/ui/button";
@@ -17,15 +18,24 @@ const NAV = [
 ] as const;
 
 export function AdminShell({ children }: { children: ReactNode }) {
-  const { session, logout } = useAuth();
+  const { session, logout, ready } = useAuth();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const navigating = useRouterState({ select: (s) => s.isLoading || s.isTransitioning });
   const user = session?.user;
 
   const isActive = (to: string, exact: boolean) => {
     if (exact) return pathname === "/admin" || pathname === "/admin/";
     return pathname === to || pathname.startsWith(`${to}/`);
   };
+
+  if (!ready) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <PageLoader label="Loading admin…" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background lg:grid lg:grid-cols-[240px_1fr]">
@@ -102,7 +112,16 @@ export function AdminShell({ children }: { children: ReactNode }) {
             Sign out
           </Button>
         </div>
-        <main className="flex-1 px-4 py-6 sm:px-8">{children}</main>
+        <main className="relative flex-1 px-4 py-6 sm:px-8">
+          {navigating ? (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-start justify-center bg-background/40 pt-24">
+              <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-card">
+                <PageLoader label="Loading…" compact className="py-2" />
+              </div>
+            </div>
+          ) : null}
+          {children}
+        </main>
       </div>
     </div>
   );

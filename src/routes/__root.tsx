@@ -12,6 +12,7 @@ import { type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthGate, AuthProvider } from "@/lib/auth";
+import { RouteTransitionLoader } from "@/components/RouteTransitionLoader";
 import { StoreProvider } from "@/lib/store";
 
 function NotFoundComponent() {
@@ -132,6 +133,7 @@ function RootComponent() {
       <AuthProvider>
         <AuthGate>
           <StoreProvider>
+            <RouteTransitionLoader />
             {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
             <Outlet />
             <Toaster />

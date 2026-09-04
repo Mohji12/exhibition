@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import { CreditCard, LayoutList, CalendarDays, ScanLine, UserRound, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { PageLoader } from "@/components/PageLoader";
@@ -52,6 +52,7 @@ export function AppShell({
 }) {
   const { session } = useAuth();
   const { seedSource } = useStore();
+  const navigating = useRouterState({ select: (s) => s.isLoading || s.isTransitioning });
   const letters = session?.user ? initials(session.user.name) : "";
   const booting = seedSource === "loading";
 
@@ -85,11 +86,18 @@ export function AppShell({
           </div>
         </header>
 
-        <main className="flex-1 px-4 pb-28 pt-4">
+        <main className="relative flex-1 px-4 pb-28 pt-4">
           {booting ? (
             <PageLoader label="Loading your booth data…" />
           ) : (
             <>
+              {navigating ? (
+                <div className="pointer-events-none absolute inset-x-0 top-4 z-10 flex justify-center">
+                  <div className="rounded-xl border border-border bg-card/95 px-4 py-2 shadow-card backdrop-blur">
+                    <PageLoader label="Loading…" compact className="py-1" />
+                  </div>
+                </div>
+              ) : null}
               {session?.user.role === "Rep" &&
               !(
                 session.user.company?.trim() &&

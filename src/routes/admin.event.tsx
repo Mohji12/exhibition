@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
+import { PageLoader } from "@/components/PageLoader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useStore } from "@/lib/store";
@@ -13,13 +14,17 @@ export const Route = createFileRoute("/admin/event")({
 });
 
 function EventSettingsPage() {
-  const { interests, addInterest, removeInterest } = useStore();
+  const { interests, addInterest, removeInterest, seedSource } = useStore();
   const [newTag, setNewTag] = useState("");
 
   const addTag = () => {
     addInterest(newTag);
     setNewTag("");
   };
+
+  if (seedSource === "loading") {
+    return <PageLoader label="Loading event settings…" />;
+  }
 
   return (
     <div className="mx-auto max-w-xl">
