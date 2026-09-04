@@ -5,6 +5,7 @@ import type {
   Appointment,
   AuthSession,
   AuthUser,
+  CaptureMeta,
   InvitePin,
   Lead,
   TeamMember,
@@ -175,6 +176,9 @@ export async function submitPublicLead(
     interests?: string[];
     captureSource?: "qr" | "card" | "manual";
     ocrText?: string;
+    summary?: string;
+    consentAt?: string;
+    captureMeta?: CaptureMeta;
   },
 ): Promise<UpsertLeadResponse> {
   return apiFetch<UpsertLeadResponse>(
@@ -262,6 +266,7 @@ function leadQuery(filters: AdminLeadFilters = {}): string {
   if (filters.synced !== undefined) params.set("synced", String(filters.synced));
   if (filters.source) params.set("source", filters.source);
   if (filters.capturedBy) params.set("capturedBy", filters.capturedBy);
+  if (filters.filledBy) params.set("filledBy", filters.filledBy);
   const qs = params.toString();
   return qs ? `?${qs}` : "";
 }
@@ -466,4 +471,30 @@ export async function reprocessAudio(
     method: "POST",
     body: "{}",
   });
+}
+
+export async function uploadPublicAudio(
+  token: string,
+  body: { audioBase64: string; mimeType?: string; leadId?: string },
+): Promise<UploadAudioResponse> {
+  return apiFetch<UploadAudioResponse>(
+    `/api/public/exhibitors/${encodeURIComponent(token)}/audio`,
+    { method: "POST", body: JSON.stringify(body) },
+    false,
+  );
+}
+
+export async function reprocessPublicAudio(
+  token: string,
+  audioId: string,
+  transcriptHint?: string,
+): Promise<TranscribeResponse> {
+  const q = transcriptHint
+    ? `?transcript_hint=${encodeURIComponent(transcriptHint)}`
+    : "";
+  return apiFetch<TranscribeResponse>(
+    `/api/public/exhibitors/${encodeURIComponent(token)}/audio/${encodeURIComponent(audioId)}/transcribe${q}`,
+    { method: "POST", body: "{}" },
+    false,
+  );
 }

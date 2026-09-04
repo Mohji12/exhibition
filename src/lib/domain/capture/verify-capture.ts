@@ -156,13 +156,18 @@ export function mergeStoreVoiceIntoLead(local: Lead, fromStore: Lead): Lead {
     localStatus === "processing" || localStatus === "saved" || localStatus === "recording";
 
   const localSummary = (local.summary ?? "").trim();
+  const storeSummary = (fromStore.summary ?? "").trim();
   const takeSummary =
     !localSummary ||
     localSummary.toLowerCase() === "null" ||
-    (localVoicePending && storeVoiceReady && Boolean((fromStore.summary ?? "").trim()));
+    (localVoicePending && storeVoiceReady && Boolean(storeSummary)) ||
+    (storeVoiceReady &&
+      Boolean(storeSummary) &&
+      storeSummary !== localSummary &&
+      localSummary.length < storeSummary.length);
 
   const nextMeta = { ...local.captureMeta };
-  if (fromStore.captureMeta && (storeVoiceReady || localVoicePending)) {
+  if (fromStore.captureMeta && (storeVoiceReady || localVoicePending || storeStatus === "failed")) {
     for (const key of VOICE_MERGE_KEYS) {
       const value = fromStore.captureMeta[key];
       if (value !== undefined) {
@@ -175,5 +180,30 @@ export function mergeStoreVoiceIntoLead(local: Lead, fromStore: Lead): Lead {
     ...local,
     summary: takeSummary ? fromStore.summary || local.summary : local.summary,
     captureMeta: nextMeta,
+  };
+}
+
+/** Prefer newer voice/summary when merging a synced server lead over local. */
+export function preferLocalVoice(local: Lead, incoming: Lead): Lead {
+  const localStatus = local.captureMeta?.voiceStatus;
+  const incomingStatus = incoming.captureMeta?.voiceStatus;
+  const localAhead =
+    localStatus === "ready" ||
+    localStatus === "processing" ||
+    localStatus === "saved" ||
+    ((local.summary ?? "").trim().length > (incoming.summary ?? "").trim().length &&
+      Boolean(local.captureMeta?.audioId || local.captureMeta?.audioKey));
+
+  if (!localAhead) return incoming;
+
+  return {
+    ...incoming,
+    summary: (local.summary ?? "").trim() ? local.summary : incoming.summary,
+    captureMeta: {
+      ...incoming.captureMeta,
+      ...Object.fromEntries(
+        VOICE_MERGE_KEYS.map((k) => [k, local.captureMeta?.[k] ?? incoming.captureMeta?.[k]]),
+      ),
+    },
   };
 }

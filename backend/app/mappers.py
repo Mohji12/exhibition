@@ -40,6 +40,7 @@ def map_lead_row(row: dict[str, Any]) -> Lead:
         captured_by=row.get("captured_by"),
         capturer_name=row.get("capturer_name"),
         capturer_email=row.get("capturer_email"),
+        filled_by=row.get("filled_by") or "exhibitor",
     )
 
 
@@ -78,6 +79,7 @@ LEAD_SELECT_SQL = """
     l.capture_source,
     l.capture_meta,
     l.captured_by,
+    l.filled_by,
     u.name AS capturer_name,
     u.email AS capturer_email,
     GROUP_CONCAT(pi.name ORDER BY pi.id SEPARATOR '||') AS interest_names

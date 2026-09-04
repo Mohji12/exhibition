@@ -470,6 +470,18 @@ assert("CardCapture reuses shared OCR worker", cardSrc.includes("recognizeWithSh
 assert("CardCapture skips second Gemini after fail", cardSrc.includes("geminiAttempted"));
 assert("CardCapture does not await upload on continue", cardSrc.includes("Do not await upload"));
 
+console.log("\n=== filledBy + voice cancel parity ===\n");
+const leadsDomain = readFileSync(resolve(root, "src/lib/domain/leads.ts"), "utf8");
+assert("filterLeads supports filledBy", leadsDomain.includes("filledBy"));
+const voiceSrc = readFileSync(resolve(root, "src/components/capture/VoiceRecorder.tsx"), "utf8");
+assert("VoiceRecorder has cancelRecording", voiceSrc.includes("cancelRecording"));
+assert("VoiceRecorder blocks start while active", voiceSrc.includes("hasActiveVoice"));
+assert("VoiceRecorder supports shareToken", voiceSrc.includes("shareToken"));
+const publicSrc = readFileSync(resolve(root, "backend/app/routers/public.py"), "utf8");
+assert("public audio upload route", publicSrc.includes("/exhibitors/{token}/audio"));
+assert("public lead sets visitor filled_by", publicSrc.includes('filled_by="visitor"'));
+assert("verify exports preferLocalVoice", verifySrc.includes("export function preferLocalVoice"));
+
 console.log("\n=== Summary ===\n");
 const ok = results.filter(Boolean).length;
 console.log(`${ok}/${results.length} checks passed`);

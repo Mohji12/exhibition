@@ -12,8 +12,10 @@ import {
   submitPublicLead,
   type PublicExhibitor,
 } from "@/lib/api/http-client";
+import { VoiceRecorder } from "@/components/capture/VoiceRecorder";
 import { compressDataUrl } from "@/lib/domain/capture/card-image-store";
 import { parseBusinessCardText } from "@/lib/domain/capture/parse-ocr";
+import type { CaptureMeta } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/e/$shareToken")({
@@ -62,6 +64,10 @@ function VisitorExhibitorPage() {
   const [showScan, setShowScan] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [cameraOn, setCameraOn] = useState(false);
+  const [visitorLeadId] = useState(() => `v${Date.now().toString(36)}`);
+  const [summary, setSummary] = useState("");
+  const [consentAt, setConsentAt] = useState<string | undefined>();
+  const [captureMeta, setCaptureMeta] = useState<CaptureMeta | undefined>();
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -247,6 +253,9 @@ function VisitorExhibitorPage() {
         interests: selected,
         captureSource,
         ocrText,
+        summary: summary.trim() || undefined,
+        consentAt,
+        captureMeta,
       });
       if (!result.ok) throw new Error(result.error || "Submit failed");
       setDone(true);
@@ -458,6 +467,21 @@ function VisitorExhibitorPage() {
                     </Button>
                   </div>
                 </div>
+
+                <VoiceRecorder
+                  leadId={visitorLeadId}
+                  summary={summary}
+                  consentAt={consentAt}
+                  captureMeta={captureMeta}
+                  shareToken={shareToken}
+                  consentLabel="I consent to recording a short note for this exhibitor"
+                  processNote="Processing may take a moment. Submit your details — we keep the recording and finish when the connection is good."
+                  onSummaryChange={setSummary}
+                  onConsentChange={setConsentAt}
+                  onCaptureMetaChange={(patch) =>
+                    setCaptureMeta((prev) => ({ ...prev, ...patch }))
+                  }
+                />
 
                 {error ? <p className="text-sm text-destructive">{error}</p> : null}
 

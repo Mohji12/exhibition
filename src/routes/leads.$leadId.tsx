@@ -141,9 +141,10 @@ function LeadDetailPage() {
 
     const existing = leads.find((l) => l.id === leadId);
     if (existing) {
-      if (!preserveLocalRef.current) {
+      if (!preserveLocalRef.current && !draftLoaded.current) {
         setLead(existing);
         setCaptureSource(existing.captureSource ?? source);
+        preserveLocalRef.current = true;
       } else {
         setLead((prev) => {
           const next = mergeStoreVoiceIntoLead(prev, existing);
@@ -240,6 +241,7 @@ function LeadDetailPage() {
       await saveLead({
         ...parsed.data,
         captureSource: captureSource ?? "manual",
+        filledBy: lead.filledBy ?? "exhibitor",
         captureMeta: {
           ...parsed.data.captureMeta,
           verifiedAt: new Date().toISOString(),
@@ -405,7 +407,7 @@ function LeadDetailPage() {
               ...prev,
               captureMeta: { ...prev.captureMeta, ...patch },
             }));
-            patchLeadLocal(lead.id, { captureMeta: { ...lead.captureMeta, ...patch } });
+            patchLeadLocal(lead.id, { captureMeta: patch });
           }}
         />
       </div>

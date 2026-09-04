@@ -12,7 +12,7 @@ import {
 } from "@/lib/api/http-client";
 import { useAuth } from "@/lib/auth";
 import { readSession } from "@/lib/auth-session";
-import type { AdminLeadFilters, AuthUser, CaptureSource, Lead, Priority } from "@/lib/types";
+import type { AdminLeadFilters, AuthUser, CaptureSource, FilledBy, Lead, Priority } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -23,6 +23,7 @@ type LeadsSearch = {
   synced?: "true" | "false";
   source?: CaptureSource | "unknown";
   capturedBy?: string;
+  filledBy?: FilledBy;
 };
 
 export const Route = createFileRoute("/admin/leads")({
@@ -41,6 +42,10 @@ export const Route = createFileRoute("/admin/leads")({
         ? search.source
         : undefined,
     capturedBy: typeof search.capturedBy === "string" ? search.capturedBy : undefined,
+    filledBy:
+      search.filledBy === "exhibitor" || search.filledBy === "visitor"
+        ? search.filledBy
+        : undefined,
   }),
   head: () => ({
     meta: [{ title: "Admin leads — FUNNEL" }],
@@ -55,6 +60,7 @@ function searchToFilters(search: LeadsSearch): AdminLeadFilters {
     synced: search.synced === undefined ? undefined : search.synced === "true",
     source: search.source,
     capturedBy: search.capturedBy,
+    filledBy: search.filledBy,
   };
 }
 
@@ -394,6 +400,20 @@ function AdminLeadsPage() {
         </select>
         <select
           className="h-10 rounded-xl border border-input bg-background px-3 text-sm"
+          value={search.filledBy ?? ""}
+          onChange={(e) =>
+            patchSearch({
+              capturedBy: exhibitorId,
+              filledBy: (e.target.value || undefined) as LeadsSearch["filledBy"],
+            })
+          }
+        >
+          <option value="">All fillers</option>
+          <option value="exhibitor">Exhibitor added</option>
+          <option value="visitor">Client filled</option>
+        </select>
+        <select
+          className="h-10 rounded-xl border border-input bg-background px-3 text-sm"
           value={search.synced ?? ""}
           onChange={(e) =>
             patchSearch({
@@ -424,6 +444,7 @@ function AdminLeadsPage() {
                 <th className="py-3 pr-3 font-medium">Company</th>
                 <th className="py-3 pr-3 font-medium">Priority</th>
                 <th className="py-3 pr-3 font-medium">Source</th>
+                <th className="py-3 pr-3 font-medium">Filled by</th>
                 <th className="py-3 font-medium">Sync</th>
               </tr>
             </thead>
@@ -448,6 +469,9 @@ function AdminLeadsPage() {
                     <td className="py-3 pr-3 text-muted-foreground">{lead.company}</td>
                     <td className="py-3 pr-3 capitalize">{lead.priority}</td>
                     <td className="py-3 pr-3">{lead.captureSource ?? "—"}</td>
+                    <td className="py-3 pr-3">
+                      {lead.filledBy === "visitor" ? "Client" : "Exhibitor"}
+                    </td>
                     <td className="py-3">{lead.synced ? "Synced" : "Pending"}</td>
                   </tr>
                 ))
@@ -467,6 +491,10 @@ function AdminLeadsPage() {
                 <Row label="City" value={selected.city} />
                 <Row label="Priority" value={selected.priority} />
                 <Row label="Source" value={selected.captureSource ?? "—"} />
+                <Row
+                  label="Filled by"
+                  value={selected.filledBy === "visitor" ? "Client filled" : "Exhibitor added"}
+                />
                 <Row label="Captured" value={selected.capturedAt} />
                 <Row label="Interests" value={selected.interests.join(", ") || "—"} />
               </dl>

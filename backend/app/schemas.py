@@ -17,6 +17,7 @@ class CamelModel(BaseModel):
 
 Priority = Literal["hot", "warm", "cold"]
 CaptureSource = Literal["qr", "card", "manual"]
+FilledBy = Literal["exhibitor", "visitor"]
 AppointmentType = Literal["Online call", "Physical", "Product Demo", "Site Visit"]
 AppointmentStatus = Literal["Confirmed", "Pending", "Rescheduled"]
 TeamRole = Literal["Rep", "Admin"]
@@ -110,6 +111,7 @@ class Lead(CamelModel):
     captured_by: str | None = None
     capturer_name: str | None = None
     capturer_email: EmailStr | None = None
+    filled_by: FilledBy = "exhibitor"
 
 
 class Appointment(CamelModel):
@@ -258,6 +260,9 @@ class PublicVisitorLeadRequest(CamelModel):
     interests: list[str] = Field(default_factory=list)
     capture_source: CaptureSource = "qr"
     ocr_text: str | None = None
+    summary: str = ""
+    consent_at: str | None = None
+    capture_meta: CaptureMeta | None = None
 
 
 class InviteStatus(CamelModel):

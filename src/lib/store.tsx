@@ -18,6 +18,7 @@ import {
   upsertLead,
 } from "@/lib/api/http-client";
 import { mergeLead } from "@/lib/domain/leads";
+import { preferLocalVoice } from "@/lib/domain/capture/verify-capture";
 import {
   applySyncResults,
   buildSyncQueue,
@@ -156,14 +157,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const saveLead = useCallback(
     async (lead: Lead) => {
-      const unsynced = { ...lead, synced: false };
-      setLeads((prev) => mergeLead(prev, unsynced));
-      pendingRef.current = upsertPendingLead(pendingRef.current, unsynced);
+      const withActor: Lead = {
+        ...lead,
+        filledBy: lead.filledBy ?? "exhibitor",
+        synced: false,
+      };
+      setLeads((prev) => mergeLead(prev, withActor));
+      pendingRef.current = upsertPendingLead(pendingRef.current, withActor);
       persistQueue(pendingRef.current);
 
-      const synced = await trySyncLead(unsynced);
-      setLeads((prev) => mergeLead(prev, synced));
-      return synced;
+      const synced = await trySyncLead(withActor);
+      setLeads((prev) => {
+        const current = prev.find((l) => l.id === withActor.id) ?? withActor;
+        const merged = preferLocalVoice(current, synced);
+        return mergeLead(prev, merged);
+      });
+      const current = leadsRef.current.find((l) => l.id === withActor.id) ?? withActor;
+      const merged = preferLocalVoice(current, synced);
+      leadsRef.current = mergeLead(leadsRef.current, merged);
+      return merged;
     },
     [trySyncLead],
   );
@@ -182,7 +194,54 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       return next;
     };
-    setLeads((prev) => prev.map(apply));
+    setLeads((prev) => {
+      const exists = prev.some((l) => l.id === id);
+      if (!exists) {
+        const created: Lead = {
+          id,
+          name: "",
+          company: "",
+          designation: "",
+          mobile: "",
+          email: "",
+          city: "",
+          priority: "warm",
+          interests: [],
+          summary: "",
+          synced: false,
+          capturedAt: new Date().toISOString(),
+          filledBy: "exhibitor",
+          ...patch,
+          captureMeta: patch.captureMeta,
+        };
+        return [created, ...prev];
+      }
+      return prev.map(apply);
+    });
+    const exists = leadsRef.current.some((l) => l.id === id);
+    if (!exists) {
+      const created: Lead = {
+        id,
+        name: "",
+        company: "",
+        designation: "",
+        mobile: "",
+        email: "",
+        city: "",
+        priority: "warm",
+        interests: [],
+        summary: "",
+        synced: false,
+        capturedAt: new Date().toISOString(),
+        filledBy: "exhibitor",
+        ...patch,
+        captureMeta: patch.captureMeta,
+      };
+      leadsRef.current = [created, ...leadsRef.current];
+      pendingRef.current = upsertPendingLead(pendingRef.current, created);
+      persistQueue(pendingRef.current);
+      return;
+    }
     leadsRef.current = leadsRef.current.map(apply);
     const next = leadsRef.current.find((l) => l.id === id);
     if (next) {

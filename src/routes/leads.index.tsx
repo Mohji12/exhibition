@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { filterLeads } from "@/lib/domain/leads";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import type { Priority } from "@/lib/types";
+import type { FilledBy, Priority } from "@/lib/types";
 
 export const Route = createFileRoute("/leads/")({
   head: () => ({
@@ -31,6 +31,10 @@ export const Route = createFileRoute("/leads/")({
 
 const PRIORITIES: Priority[] = ["hot", "warm", "cold"];
 const SYNC_FILTERS = ["synced", "pending"] as const;
+const FILLED_BY: { value: FilledBy; label: string }[] = [
+  { value: "exhibitor", label: "Exhibitor added" },
+  { value: "visitor", label: "Client filled" },
+];
 
 function Chip({
   active,
@@ -62,6 +66,7 @@ function LeadsPage() {
   const [priority, setPriority] = useState<Priority | null>(null);
   const [interest, setInterest] = useState<string | null>(null);
   const [sync, setSync] = useState<(typeof SYNC_FILTERS)[number] | null>(null);
+  const [filledBy, setFilledBy] = useState<FilledBy | null>(null);
 
   const filtered = useMemo(
     () =>
@@ -70,8 +75,9 @@ function LeadsPage() {
         priority,
         interest,
         sync,
+        filledBy,
       }),
-    [leads, query, priority, interest, sync],
+    [leads, query, priority, interest, sync, filledBy],
   );
 
   const clear = () => {
@@ -79,6 +85,7 @@ function LeadsPage() {
     setPriority(null);
     setInterest(null);
     setSync(null);
+    setFilledBy(null);
   };
 
   return (
@@ -94,6 +101,17 @@ function LeadsPage() {
       </div>
 
       <div className="-mx-4 mt-3 space-y-2 overflow-hidden px-4">
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {FILLED_BY.map((f) => (
+            <Chip
+              key={f.value}
+              active={filledBy === f.value}
+              onClick={() => setFilledBy(filledBy === f.value ? null : f.value)}
+            >
+              {f.label}
+            </Chip>
+          ))}
+        </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
           {PRIORITIES.map((p) => (
             <Chip
@@ -124,32 +142,55 @@ function LeadsPage() {
       </div>
 
       <div className="mt-3 space-y-2.5">
-        {filtered.map((lead) => (
-          <Link
-            key={lead.id}
-            to="/leads/$leadId"
-            params={{ leadId: lead.id }}
-            className="block rounded-xl border border-border bg-card p-4 shadow-card transition-transform active:scale-[0.99]"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate text-[15px] font-semibold text-foreground">{lead.name}</p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {lead.designation} · {lead.company}
-                </p>
+        {filtered.map((lead) => {
+          const who = lead.filledBy === "visitor" ? "Client filled" : "Exhibitor added";
+          const voice = lead.captureMeta?.voiceStatus;
+          const summaryLine =
+            voice === "processing" || voice === "saved"
+              ? "Voice summary processing…"
+              : lead.summary?.trim()
+                ? lead.summary.trim()
+                : null;
+          return (
+            <Link
+              key={lead.id}
+              to="/leads/$leadId"
+              params={{ leadId: lead.id }}
+              className="block rounded-xl border border-border bg-card p-4 shadow-card transition-transform active:scale-[0.99]"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-[15px] font-semibold text-foreground">{lead.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {lead.designation} · {lead.company}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <PriorityBadge priority={lead.priority} />
+                  <SyncDot synced={lead.synced} />
+                </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <PriorityBadge priority={lead.priority} />
-                <SyncDot synced={lead.synced} />
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                    lead.filledBy === "visitor"
+                      ? "bg-warm-soft text-warning-foreground"
+                      : "bg-secondary text-muted-foreground",
+                  )}
+                >
+                  {who}
+                </span>
+                {lead.interests.map((t) => (
+                  <Tag key={t}>{t}</Tag>
+                ))}
               </div>
-            </div>
-            <div className="mt-2.5 flex flex-wrap gap-1.5">
-              {lead.interests.map((t) => (
-                <Tag key={t}>{t}</Tag>
-              ))}
-            </div>
-          </Link>
-        ))}
+              {summaryLine ? (
+                <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{summaryLine}</p>
+              ) : null}
+            </Link>
+          );
+        })}
 
         {filtered.length === 0 && (
           <div className="rounded-xl border border-dashed border-border bg-card p-8 text-center">

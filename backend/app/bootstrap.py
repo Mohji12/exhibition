@@ -75,6 +75,24 @@ def _ensure_captured_by(cur) -> None:
         logger.info("Added fk_leads_captured_by")
 
 
+def _ensure_filled_by(cur) -> None:
+    if not _column_exists(cur, "leads", "filled_by"):
+        cur.execute(
+            """
+            ALTER TABLE leads
+              ADD COLUMN filled_by ENUM('exhibitor', 'visitor') NOT NULL DEFAULT 'exhibitor'
+            """
+        )
+        logger.info("Added leads.filled_by column")
+    # Public visitor leads use id prefix v…
+    cur.execute(
+        """
+        UPDATE leads
+        SET filled_by = 'visitor'
+        WHERE filled_by = 'exhibitor' AND id LIKE 'v%%'
+        """
+    )
+
 def _ensure_user_profile_columns(cur) -> None:
     if not _column_exists(cur, "users", "company"):
         cur.execute("ALTER TABLE users ADD COLUMN company VARCHAR(200) NULL")
@@ -292,6 +310,7 @@ def bootstrap_auth() -> None:
         _ensure_user(cur, name, email, pin, "Admin")
         _backfill_missing_login_pins(cur)
         _ensure_captured_by(cur)
+        _ensure_filled_by(cur)
         _ensure_card_images(cur)
         _ensure_lead_audio(cur)
         _purge_demo_data(cur, email)

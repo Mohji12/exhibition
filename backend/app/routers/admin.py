@@ -124,6 +124,7 @@ def _lead_filters(
     synced: bool | None,
     source: CaptureSource | Literal["unknown"] | None,
     captured_by: str | None,
+    filled_by: Literal["exhibitor", "visitor"] | None = None,
 ) -> tuple[str, list]:
     clauses: list[str] = []
     params: list = []
@@ -147,6 +148,9 @@ def _lead_filters(
     if captured_by:
         clauses.append("l.captured_by = %s")
         params.append(captured_by)
+    if filled_by:
+        clauses.append("l.filled_by = %s")
+        params.append(filled_by)
     where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
     return where, params
 
@@ -158,8 +162,9 @@ def _filtered_leads(
     synced: bool | None,
     source: CaptureSource | Literal["unknown"] | None,
     captured_by: str | None,
+    filled_by: Literal["exhibitor", "visitor"] | None = None,
 ) -> list[Lead]:
-    where, params = _lead_filters(q, priority, synced, source, captured_by)
+    where, params = _lead_filters(q, priority, synced, source, captured_by, filled_by)
     # Wrap LEAD_SELECT so WHERE applies before GROUP BY via subquery filter on ids,
     # or inject before GROUP BY.
     sql = LEAD_SELECT_SQL.replace(
@@ -503,9 +508,10 @@ def export_leads(
     synced: bool | None = None,
     source: CaptureSource | Literal["unknown"] | None = None,
     captured_by: str | None = Query(default=None, alias="capturedBy"),
+    filled_by: Literal["exhibitor", "visitor"] | None = Query(default=None, alias="filledBy"),
 ) -> Response:
     with get_connection() as conn, conn.cursor() as cur:
-        leads = _filtered_leads(cur, q, priority, synced, source, captured_by)
+        leads = _filtered_leads(cur, q, priority, synced, source, captured_by, filled_by)
 
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -523,6 +529,7 @@ def export_leads(
             "synced",
             "captured_at",
             "capture_source",
+            "filled_by",
             "capturer_name",
             "capturer_email",
             "summary",
@@ -543,6 +550,7 @@ def export_leads(
                 "1" if lead.synced else "0",
                 lead.captured_at,
                 lead.capture_source or "",
+                lead.filled_by or "exhibitor",
                 lead.capturer_name or "",
                 str(lead.capturer_email or ""),
                 lead.summary,
@@ -563,13 +571,14 @@ def export_leads_xlsx(
     synced: bool | None = None,
     source: CaptureSource | Literal["unknown"] | None = None,
     captured_by: str | None = Query(default=None, alias="capturedBy"),
+    filled_by: Literal["exhibitor", "visitor"] | None = Query(default=None, alias="filledBy"),
 ) -> Response:
     from app.services.card_images import lead_has_card_image
     from app.services.export_xlsx import build_leads_workbook
     from app.services.gemini_report import generate_booth_report
 
     with get_connection() as conn, conn.cursor() as cur:
-        leads = _filtered_leads(cur, q, priority, synced, source, captured_by)
+        leads = _filtered_leads(cur, q, priority, synced, source, captured_by, filled_by)
         image_flags = {lead.id: lead_has_card_image(conn, lead.id) for lead in leads}
 
     overview_data = overview()
@@ -598,9 +607,10 @@ def list_leads(
     synced: bool | None = None,
     source: CaptureSource | Literal["unknown"] | None = None,
     captured_by: str | None = Query(default=None, alias="capturedBy"),
+    filled_by: Literal["exhibitor", "visitor"] | None = Query(default=None, alias="filledBy"),
 ) -> list[Lead]:
     with get_connection() as conn, conn.cursor() as cur:
-        return _filtered_leads(cur, q, priority, synced, source, captured_by)
+        return _filtered_leads(cur, q, priority, synced, source, captured_by, filled_by)
 
 
 @router.get("/leads/{lead_id}", response_model=Lead)

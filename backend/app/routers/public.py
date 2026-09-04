@@ -4,7 +4,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from app.config import settings
 from app.database import get_connection
@@ -15,9 +15,13 @@ from app.schemas import (
     Lead,
     PublicExhibitorOut,
     PublicVisitorLeadRequest,
+    TranscribeResponse,
+    UploadAudioRequest,
+    UploadAudioResponse,
     UpsertLeadResponse,
 )
 from app.security import check_rate_limit
+from app.services.audio_store import store_audio, transcribe_stored_audio
 from app.services.gemini_capture import analyze_visiting_card
 from app.services.lead_db import upsert_lead_in_db
 
@@ -70,6 +74,51 @@ def get_public_exhibitor(token: str) -> PublicExhibitorOut:
     )
 
 
+@router.post("/exhibitors/{token}/audio", response_model=UploadAudioResponse)
+def upload_public_audio(
+    token: str,
+    body: UploadAudioRequest,
+    request: Request,
+) -> UploadAudioResponse:
+    check_rate_limit(f"public-audio:{_client_key(request)}:{token}")
+    with get_connection() as conn, conn.cursor() as cur:
+        exhibitor = _load_active_exhibitor(cur, token)
+        if not exhibitor:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exhibitor not found")
+    try:
+        with get_connection() as conn:
+            return store_audio(
+                conn,
+                audio_base64=body.audio_base64,
+                mime_type=body.mime_type or "audio/webm",
+                lead_id=body.lead_id,
+                capturer_id=exhibitor["id"],
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not save recording",
+        ) from None
+
+
+@router.post("/exhibitors/{token}/audio/{audio_id}/transcribe", response_model=TranscribeResponse)
+def reprocess_public_audio(
+    token: str,
+    audio_id: str,
+    request: Request,
+    transcript_hint: str | None = Query(default=None),
+) -> TranscribeResponse:
+    check_rate_limit(f"public-tx:{_client_key(request)}:{token}")
+    with get_connection() as conn, conn.cursor() as cur:
+        exhibitor = _load_active_exhibitor(cur, token)
+        if not exhibitor:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exhibitor not found")
+    with get_connection() as conn:
+        return transcribe_stored_audio(conn, audio_id, transcript_hint=transcript_hint)
+
+
 @router.post("/exhibitors/{token}/leads", response_model=UpsertLeadResponse)
 def submit_public_lead(
     token: str,
@@ -113,10 +162,11 @@ def submit_public_lead(
     capture_source = body.capture_source if body.capture_source in ("qr", "card", "manual") else "qr"
     now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds") + "Z"
 
-    meta = CaptureMeta(
-        ocr_text=body.ocr_text,
-        verified_at=now,
-    )
+    meta = body.capture_meta or CaptureMeta()
+    if body.ocr_text and not meta.ocr_text:
+        meta.ocr_text = body.ocr_text
+    if not meta.verified_at:
+        meta.verified_at = now
 
     lead = Lead(
         id=lead_id,
@@ -128,12 +178,13 @@ def submit_public_lead(
         city=city,
         priority="warm",
         interests=body.interests,
-        summary="",
+        summary=(body.summary or "").strip(),
         synced=True,
         captured_at=now,
-        consent_at=now,
+        consent_at=body.consent_at or now,
         capture_source=capture_source,
         capture_meta=meta,
+        filled_by="visitor",
     )
 
     with get_connection() as conn:

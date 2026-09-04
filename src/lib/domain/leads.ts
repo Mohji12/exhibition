@@ -1,10 +1,11 @@
-import type { Lead, Priority } from "@/lib/types";
+import type { FilledBy, Lead, Priority } from "@/lib/types";
 
 export type LeadFilter = {
   query?: string;
   priority?: Priority | null;
   interest?: string | null;
   sync?: "synced" | "pending" | null;
+  filledBy?: FilledBy | null;
 };
 
 export function normalizeEmail(email: string): string {
@@ -16,7 +17,7 @@ export function normalizeMobile(mobile: string): string {
 }
 
 export function filterLeads(leads: Lead[], filter: LeadFilter = {}): Lead[] {
-  const { query = "", priority = null, interest = null, sync = null } = filter;
+  const { query = "", priority = null, interest = null, sync = null, filledBy = null } = filter;
   return leads.filter((l) => {
     const q = query.trim().toLowerCase();
     if (q && !`${l.name} ${l.company} ${l.email}`.toLowerCase().includes(q)) return false;
@@ -24,6 +25,7 @@ export function filterLeads(leads: Lead[], filter: LeadFilter = {}): Lead[] {
     if (interest && !l.interests.includes(interest)) return false;
     if (sync === "synced" && !l.synced) return false;
     if (sync === "pending" && l.synced) return false;
+    if (filledBy && (l.filledBy ?? "exhibitor") !== filledBy) return false;
     return true;
   });
 }
@@ -60,6 +62,7 @@ export function createEmptyLead(id?: string): Lead {
     synced: false,
     capturedAt: "Just now",
     captureSource: "manual",
+    filledBy: "exhibitor",
   };
 }
 

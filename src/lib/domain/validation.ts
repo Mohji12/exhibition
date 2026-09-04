@@ -74,6 +74,10 @@ export const leadSchema = z.object({
   capturedBy: z.preprocess(asOptionalString, z.string().optional()),
   capturerName: z.preprocess(asOptionalString, z.string().optional()),
   capturerEmail: z.preprocess(asOptionalString, z.string().optional()),
+  filledBy: z.preprocess(
+    (v) => (v == null ? "exhibitor" : v),
+    z.enum(["exhibitor", "visitor"]).optional(),
+  ),
 });
 
 export const appointmentSchema = z.object({

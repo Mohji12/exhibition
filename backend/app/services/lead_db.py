@@ -39,9 +39,9 @@ def upsert_lead_in_db(
                 INSERT INTO leads (
                   id, name, company, designation, mobile, email, city, priority,
                   summary, synced, captured_at, consent_at, capture_source, capture_meta,
-                  captured_by
+                  captured_by, filled_by
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                   name = VALUES(name),
                   company = VALUES(company),
@@ -56,7 +56,8 @@ def upsert_lead_in_db(
                   consent_at = VALUES(consent_at),
                   capture_source = VALUES(capture_source),
                   capture_meta = VALUES(capture_meta),
-                  captured_by = COALESCE(leads.captured_by, VALUES(captured_by))
+                  captured_by = COALESCE(leads.captured_by, VALUES(captured_by)),
+                  filled_by = VALUES(filled_by)
                 """,
                 (
                     lead.id,
@@ -74,6 +75,7 @@ def upsert_lead_in_db(
                     lead.capture_source,
                     capture_meta_json,
                     capturer_id,
+                    lead.filled_by or "exhibitor",
                 ),
             )
 

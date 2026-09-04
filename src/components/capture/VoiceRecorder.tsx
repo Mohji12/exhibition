@@ -1,11 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, Square } from "lucide-react";
+import { Mic, Square, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { reprocessAudio, transcribeConversation, uploadAudio } from "@/lib/api/http-client";
-import { makeAudioKey, putPendingAudio } from "@/lib/domain/capture/audio-store";
+import {
+  reprocessAudio,
+  reprocessPublicAudio,
+  transcribeConversation,
+  uploadAudio,
+  uploadPublicAudio,
+} from "@/lib/api/http-client";
+import { deletePendingAudio, makeAudioKey, putPendingAudio } from "@/lib/domain/capture/audio-store";
 import { summarizeTranscript } from "@/lib/domain/capture/summarize-transcript";
 import { sanitizeText } from "@/lib/domain/sanitize-text";
 import type { CaptureMeta } from "@/lib/types";
@@ -21,7 +27,7 @@ function getSpeechRecognition(): SpeechRecognitionCtor | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
-const PROCESS_NOTE =
+const DEFAULT_PROCESS_NOTE =
   "Processing may take a moment. Save the lead now — we keep the recording and notes as backup and finish in the background when the connection is good.";
 
 type Props = {
@@ -32,20 +38,11 @@ type Props = {
   onSummaryChange: (summary: string) => void;
   onConsentChange: (consentAt: string | undefined) => void;
   onCaptureMetaChange: (patch: Partial<CaptureMeta>) => void;
+  /** When set, uses public unauthenticated audio APIs for this share token. */
+  shareToken?: string;
+  processNote?: string;
+  consentLabel?: string;
 };
-
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result || "");
-      const base64 = result.includes(",") ? result.split(",")[1]! : result;
-      resolve(base64);
-    };
-    reader.onerror = () => reject(new Error("Could not read recording"));
-    reader.readAsDataURL(blob);
-  });
-}
 
 export function VoiceRecorder({
   leadId,
@@ -55,6 +52,9 @@ export function VoiceRecorder({
   onSummaryChange,
   onConsentChange,
   onCaptureMetaChange,
+  shareToken,
+  processNote = DEFAULT_PROCESS_NOTE,
+  consentLabel = "Visitor consented to recording",
 }: Props) {
   const [consented, setConsented] = useState(!!consentAt);
   const [recording, setRecording] = useState(false);
@@ -67,6 +67,7 @@ export function VoiceRecorder({
   const transcriptRef = useRef("");
   const autoSummaryRef = useRef("");
   const summaryRef = useRef(summary);
+  const generationRef = useRef(0);
 
   useEffect(() => {
     summaryRef.current = summary;
@@ -81,6 +82,16 @@ export function VoiceRecorder({
 
   useEffect(() => () => stopTracks(), []);
 
+  const voiceStatus = captureMeta?.voiceStatus;
+  const hasActiveVoice =
+    recording ||
+    processing ||
+    voiceStatus === "recording" ||
+    voiceStatus === "processing" ||
+    voiceStatus === "saved" ||
+    voiceStatus === "ready" ||
+    Boolean(captureMeta?.audioId || captureMeta?.audioKey || captureMeta?.transcript);
+
   const applyLive = (text: string) => {
     const clean = sanitizeText(text);
     setLiveNotes(clean);
@@ -91,13 +102,58 @@ export function VoiceRecorder({
     });
   };
 
+  const doUpload = (body: { audioBase64: string; mimeType?: string; leadId?: string }) =>
+    shareToken ? uploadPublicAudio(shareToken, body) : uploadAudio(body);
+
+  const doReprocess = (audioId: string, hint?: string) =>
+    shareToken ? reprocessPublicAudio(shareToken, audioId, hint) : reprocessAudio(audioId, hint);
+
+  const cancelRecording = async () => {
+    generationRef.current += 1;
+    setRecording(false);
+    setProcessing(false);
+    stopTracks();
+    mediaRef.current = null;
+    chunksRef.current = [];
+    transcriptRef.current = "";
+    setLiveNotes("");
+
+    const audioKey = captureMeta?.audioKey || makeAudioKey(leadId);
+    try {
+      await deletePendingAudio(audioKey);
+    } catch {
+      /* ignore */
+    }
+
+    const current = sanitizeText(summaryRef.current);
+    if (!current || current === autoSummaryRef.current || current.toLowerCase() === "null") {
+      autoSummaryRef.current = "";
+      onSummaryChange("");
+    }
+
+    onCaptureMetaChange({
+      liveTranscript: undefined,
+      transcript: undefined,
+      audioId: undefined,
+      audioKey: undefined,
+      voiceStatus: undefined,
+      voiceError: undefined,
+      processingNote: false,
+    });
+    toast.message("Recording discarded — you can record again");
+  };
+
   const start = async () => {
     if (!consented) {
-      toast.error("Visitor must consent before recording");
+      toast.error("Consent is required before recording");
+      return;
+    }
+    if (hasActiveVoice && !recording) {
+      toast.error("Cancel the current recording before starting a new one");
       return;
     }
 
-    const SpeechRecognitionClass = getSpeechRecognition();
+    generationRef.current += 1;
     transcriptRef.current = "";
     chunksRef.current = [];
     setLiveNotes("");
@@ -125,6 +181,7 @@ export function VoiceRecorder({
       toast.message("Microphone unavailable — type live notes while talking");
     }
 
+    const SpeechRecognitionClass = getSpeechRecognition();
     if (SpeechRecognitionClass) {
       const recognition = new SpeechRecognitionClass();
       recognition.continuous = true;
@@ -155,13 +212,16 @@ export function VoiceRecorder({
     mimeType: string;
     audioKey: string;
     liveHint: string;
+    generation: number;
   }) => {
-    const { audioBase64, mimeType, audioKey, liveHint: rawHint } = opts;
+    const { audioBase64, mimeType, audioKey, liveHint: rawHint, generation } = opts;
     const liveHint = sanitizeText(rawHint);
     let audioId = captureMeta?.audioId;
+    const stillCurrent = () => generationRef.current === generation;
 
     try {
       if (!navigator.onLine) {
+        if (!stillCurrent()) return;
         onCaptureMetaChange({
           audioKey,
           liveTranscript: liveHint || undefined,
@@ -169,15 +229,16 @@ export function VoiceRecorder({
           voiceStatus: "saved",
           processingNote: true,
         });
-        toast.message(PROCESS_NOTE);
+        toast.message(processNote);
         return;
       }
 
-      const uploaded = await uploadAudio({
+      const uploaded = await doUpload({
         audioBase64,
         mimeType,
         leadId,
       });
+      if (!stillCurrent()) return;
       if (uploaded.ok && uploaded.id) {
         audioId = uploaded.id;
         await putPendingAudio({
@@ -200,12 +261,16 @@ export function VoiceRecorder({
       }
 
       let result = audioId
-        ? await reprocessAudio(audioId, liveHint || undefined)
-        : await transcribeConversation({
-            audioBase64,
-            mimeType,
-            transcriptHint: liveHint || undefined,
-          });
+        ? await doReprocess(audioId, liveHint || undefined)
+        : shareToken
+          ? { ok: false as const, transcript: "", summary: "", error: "Upload failed" }
+          : await transcribeConversation({
+              audioBase64,
+              mimeType,
+              transcriptHint: liveHint || undefined,
+            });
+
+      if (!stillCurrent()) return;
 
       if (!result.ok && liveHint) {
         result = {
@@ -279,6 +344,7 @@ export function VoiceRecorder({
         toast.success("Recording saved");
       }
     } catch {
+      if (!stillCurrent()) return;
       onCaptureMetaChange({
         audioId,
         audioKey,
@@ -288,7 +354,7 @@ export function VoiceRecorder({
         voiceError: "Could not finish automatically. Your recording and live notes are kept.",
         processingNote: true,
       });
-      toast.message(PROCESS_NOTE);
+      toast.message(processNote);
     }
   };
 
@@ -296,6 +362,7 @@ export function VoiceRecorder({
     setRecording(false);
     const liveHint = sanitizeText(liveNotes || transcriptRef.current);
     const recorder = mediaRef.current;
+    const generation = generationRef.current;
 
     if (liveHint) {
       onCaptureMetaChange({
@@ -316,7 +383,7 @@ export function VoiceRecorder({
     if (!recorder || recorder.state === "inactive") {
       stopTracks();
       mediaRef.current = null;
-      if (liveHint) toast.message(PROCESS_NOTE);
+      if (liveHint) toast.message(processNote);
       return;
     }
 
@@ -337,6 +404,7 @@ export function VoiceRecorder({
           transcript: liveHint || undefined,
           voiceStatus: liveHint ? "ready" : undefined,
         });
+        setProcessing(false);
         return;
       }
       const audioBase64 = await blobToBase64(blob);
@@ -351,6 +419,10 @@ export function VoiceRecorder({
         createdAt: new Date().toISOString(),
         status: "pending",
       });
+      if (generationRef.current !== generation) {
+        setProcessing(false);
+        return;
+      }
       onCaptureMetaChange({
         audioKey,
         liveTranscript: liveHint || undefined,
@@ -358,9 +430,15 @@ export function VoiceRecorder({
         voiceStatus: "processing",
         processingNote: true,
       });
-      toast.message(PROCESS_NOTE);
-      void processInBackground({ audioBase64, mimeType, audioKey, liveHint }).finally(() => {
-        setProcessing(false);
+      toast.message(processNote);
+      void processInBackground({
+        audioBase64,
+        mimeType,
+        audioKey,
+        liveHint,
+        generation,
+      }).finally(() => {
+        if (generationRef.current === generation) setProcessing(false);
       });
       setProcessing(false);
     } catch {
@@ -371,17 +449,18 @@ export function VoiceRecorder({
         voiceError: "Could not save recording backup locally.",
         processingNote: true,
       });
-      toast.message(PROCESS_NOTE);
+      toast.message(processNote);
       setProcessing(false);
     }
   };
 
-  const voiceStatus = captureMeta?.voiceStatus;
   const showProcessBanner =
     voiceStatus === "processing" ||
     voiceStatus === "saved" ||
     voiceStatus === "failed" ||
     captureMeta?.processingNote;
+
+  const startDisabled = (!consented && !recording) || (hasActiveVoice && !recording);
 
   return (
     <section className="rounded-xl border border-border bg-card p-4 shadow-card">
@@ -407,19 +486,38 @@ export function VoiceRecorder({
             if (!ok) onConsentChange(undefined);
           }}
         />
-        Visitor consented to recording
+        {consentLabel}
       </label>
 
-      <Button
-        type="button"
-        onClick={recording ? () => void stop() : () => void start()}
-        variant={recording ? "destructive" : "secondary"}
-        className="mt-3 h-11 w-full rounded-xl"
-        disabled={!consented && !recording}
-      >
-        {recording ? <Square className="size-4" /> : <Mic className="size-4" />}
-        {recording ? "Stop recording" : "Start recording"}
-      </Button>
+      <div className="mt-3 flex gap-2">
+        <Button
+          type="button"
+          onClick={recording ? () => void stop() : () => void start()}
+          variant={recording ? "destructive" : "secondary"}
+          className="h-11 flex-1 rounded-xl"
+          disabled={startDisabled}
+        >
+          {recording ? <Square className="size-4" /> : <Mic className="size-4" />}
+          {recording ? "Stop recording" : "Start recording"}
+        </Button>
+        {hasActiveVoice && !recording ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 shrink-0 rounded-xl px-3"
+            onClick={() => void cancelRecording()}
+          >
+            <X className="size-4" />
+            Cancel
+          </Button>
+        ) : null}
+      </div>
+
+      {hasActiveVoice && !recording && voiceStatus !== "failed" ? (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Cancel the current recording to start a new one.
+        </p>
+      ) : null}
 
       {(recording || liveNotes || captureMeta?.liveTranscript) && (
         <div className="mt-3 rounded-xl border border-border bg-secondary/40 px-3 py-2">
@@ -436,7 +534,7 @@ export function VoiceRecorder({
 
       {showProcessBanner ? (
         <p className="mt-3 rounded-xl border border-primary/20 bg-primary-soft px-3 py-2 text-xs text-primary">
-          {captureMeta?.voiceError || PROCESS_NOTE}
+          {captureMeta?.voiceError || processNote}
         </p>
       ) : null}
 
@@ -451,8 +549,21 @@ export function VoiceRecorder({
       />
 
       {consentAt ? (
-        <p className="mt-2 text-[11px] text-accent">Visitor consented to recording · {consentAt}</p>
+        <p className="mt-2 text-[11px] text-accent">Consented to recording · {consentAt}</p>
       ) : null}
     </section>
   );
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const base64 = result.includes(",") ? result.split(",")[1]! : result;
+      resolve(base64);
+    };
+    reader.onerror = () => reject(new Error("Could not read recording"));
+    reader.readAsDataURL(blob);
+  });
 }

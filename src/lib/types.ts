@@ -2,6 +2,8 @@ export type Priority = "hot" | "warm" | "cold";
 
 export type CaptureSource = "qr" | "card" | "manual";
 
+export type FilledBy = "exhibitor" | "visitor";
+
 export type CaptureMeta = {
   rawQr?: string;
   ocrText?: string;
@@ -42,6 +44,7 @@ export type Lead = {
   capturedBy?: string | null;
   capturerName?: string | null;
   capturerEmail?: string | null;
+  filledBy?: FilledBy;
 };
 
 export type AppointmentType = "Online call" | "Physical" | "Product Demo" | "Site Visit";
@@ -129,4 +132,5 @@ export type AdminLeadFilters = {
   synced?: boolean;
   source?: CaptureSource | "unknown";
   capturedBy?: string;
+  filledBy?: FilledBy;
 };
