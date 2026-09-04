@@ -5,7 +5,7 @@ import uuid
 
 from app.config import settings
 from app.database import get_connection
-from app.security import generate_token, hash_pin
+from app.security import generate_pin, generate_token, hash_pin, store_login_pin
 
 logger = logging.getLogger(__name__)
 
@@ -118,12 +118,8 @@ def _ensure_user(cur, name: str, email: str, pin: str, role: str) -> str:
     cur.execute("SELECT id FROM users WHERE email = %s", (email,))
     row = cur.fetchone()
     if row:
-        # Keep recoverable PIN in sync for bootstrap admin when known.
         if pin and _column_exists(cur, "users", "login_pin_plain"):
-            cur.execute(
-                "UPDATE users SET pin_hash = %s, login_pin_plain = %s WHERE id = %s",
-                (hash_pin(pin), pin, row["id"]),
-            )
+            store_login_pin(cur, row["id"], pin)
         return row["id"]
     user_id = str(uuid.uuid4())
     cur.execute(
@@ -133,8 +129,28 @@ def _ensure_user(cur, name: str, email: str, pin: str, role: str) -> str:
         """,
         (user_id, name, email, hash_pin(pin), role, generate_token(), pin),
     )
+    store_login_pin(cur, user_id, pin)
     logger.info("Bootstrapped %s account for %s", role, email)
     return user_id
+
+
+def _backfill_missing_login_pins(cur) -> None:
+    """Ensure every user has a recoverable login_pin_plain stored."""
+    if not _column_exists(cur, "users", "login_pin_plain"):
+        return
+    cur.execute(
+        """
+        SELECT id FROM users
+        WHERE login_pin_plain IS NULL
+           OR CHAR_LENGTH(TRIM(login_pin_plain)) <> 4
+           OR login_pin_plain NOT REGEXP '^[0-9]{4}$'
+        """
+    )
+    missing = cur.fetchall()
+    for row in missing:
+        store_login_pin(cur, row["id"], generate_pin())
+    if missing:
+        logger.info("Backfilled login_pin_plain for %s user(s)", len(missing))
 
 
 def _purge_demo_data(cur, keep_admin_email: str) -> None:
@@ -274,6 +290,7 @@ def bootstrap_auth() -> None:
 
         _ensure_user_profile_columns(cur)
         _ensure_user(cur, name, email, pin, "Admin")
+        _backfill_missing_login_pins(cur)
         _ensure_captured_by(cur)
         _ensure_card_images(cur)
         _ensure_lead_audio(cur)

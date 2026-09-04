@@ -22,6 +22,7 @@ from app.security import (
     generate_token,
     hash_pin,
     issue_jwt,
+    remember_login_pin,
     require_user,
     store_login_pin,
     utcnow,
@@ -96,15 +97,7 @@ def login(body: LoginRequest) -> AuthResponse:
             )
 
         # Always keep recoverable login PIN in sync after a successful sign-in.
-        cur.execute(
-            """
-            UPDATE users
-            SET last_login_at = CURRENT_TIMESTAMP,
-                login_pin_plain = %s
-            WHERE id = %s
-            """,
-            (body.pin, row["id"]),
-        )
+        remember_login_pin(cur, row["id"], body.pin)
         conn.commit()
         cur.execute(f"SELECT {_USER_COLS} FROM users WHERE id = %s", (row["id"],))
         updated = cur.fetchone()
@@ -161,12 +154,13 @@ def activate(body: ActivateRequest) -> AuthResponse:
             )
 
         user_id = str(uuid.uuid4())
+        # Placeholder hash; store_login_pin immediately sets hash + plain together.
         cur.execute(
             """
             INSERT INTO users (
-              id, name, email, pin_hash, role, status, activated_at, share_token, login_pin_plain, last_login_at
+              id, name, email, pin_hash, role, status, activated_at, share_token, last_login_at
             )
-            VALUES (%s, %s, %s, %s, 'Rep', 'active', CURRENT_TIMESTAMP, %s, %s, CURRENT_TIMESTAMP)
+            VALUES (%s, %s, %s, %s, 'Rep', 'active', CURRENT_TIMESTAMP, %s, CURRENT_TIMESTAMP)
             """,
             (
                 user_id,
@@ -174,15 +168,15 @@ def activate(body: ActivateRequest) -> AuthResponse:
                 email,
                 hash_pin(body.login_pin),
                 generate_token(),
-                body.login_pin,
             ),
         )
+        login_pin = store_login_pin(cur, user_id, body.login_pin)
         conn.commit()
         cur.execute(f"SELECT {_USER_COLS} FROM users WHERE id = %s", (user_id,))
         row = cur.fetchone()
 
     if mail_configured():
-        send_pin_email(email, name, body.login_pin)
+        send_pin_email(email, name, login_pin)
 
     return _auth_response(row)
 

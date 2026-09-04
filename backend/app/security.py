@@ -48,12 +48,35 @@ def verify_pin(pin: str, pin_hash: str) -> bool:
         return False
 
 
-def store_login_pin(cur, user_id: str, pin: str) -> None:
-    """Persist both the hash (for auth) and recoverable plain PIN (for admin)."""
+def normalize_login_pin(pin: str) -> str:
+    value = str(pin or "").strip()
+    if len(value) != 4 or not value.isdigit():
+        raise ValueError("Login PIN must be exactly 4 digits")
+    return value
+
+
+def store_login_pin(cur, user_id: str, pin: str) -> str:
+    """Persist hash + recoverable plain PIN. Always use this for login PIN writes."""
+    value = normalize_login_pin(pin)
     cur.execute(
         "UPDATE users SET pin_hash = %s, login_pin_plain = %s WHERE id = %s",
-        (hash_pin(pin), pin, user_id),
+        (hash_pin(value), value, user_id),
     )
+    return value
+
+
+def remember_login_pin(cur, user_id: str, pin: str) -> str:
+    """Store recoverable plain PIN after a successful login (hash already verified)."""
+    value = normalize_login_pin(pin)
+    cur.execute(
+        """
+        UPDATE users
+        SET login_pin_plain = %s, last_login_at = CURRENT_TIMESTAMP
+        WHERE id = %s
+        """,
+        (value, user_id),
+    )
+    return value
 
 
 def generate_pin() -> str:
