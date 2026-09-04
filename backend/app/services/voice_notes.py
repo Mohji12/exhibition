@@ -49,13 +49,24 @@ def _parse_json(text: str) -> dict[str, Any]:
     return json.loads(cleaned)
 
 
+def _clean_text(value: Any) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    if text.lower() in {"null", "undefined", "none", "n/a"}:
+        return ""
+    return text
+
+
 def transcribe_conversation(
     audio_base64: str,
     mime_type: str = "audio/webm",
     transcript_hint: str | None = None,
 ) -> TranscribeResponse:
     if not settings.gemini_api_key.strip():
-        hint = (transcript_hint or "").strip()
+        hint = _clean_text(transcript_hint)
         return TranscribeResponse(
             ok=bool(hint),
             transcript=hint,
@@ -66,12 +77,13 @@ def transcribe_conversation(
     try:
         audio_bytes, detected = _strip_data_url(audio_base64)
         mime = detected or mime_type or "audio/webm"
-        if len(audio_bytes) < 32 and not (transcript_hint or "").strip():
+        if len(audio_bytes) < 32 and not _clean_text(transcript_hint):
             return TranscribeResponse(ok=False, error="Recording was too short")
 
         prompt = _PROMPT
-        if transcript_hint and transcript_hint.strip():
-            prompt += f"\n\nRough transcript hint:\n{transcript_hint.strip()[:6000]}"
+        hint_for_prompt = _clean_text(transcript_hint)
+        if hint_for_prompt:
+            prompt += f"\n\nRough transcript hint:\n{hint_for_prompt[:6000]}"
 
         contents: list[Any] = [prompt]
         if len(audio_bytes) >= 32:
@@ -91,14 +103,17 @@ def transcribe_conversation(
         if not text:
             return TranscribeResponse(ok=False, error="Could not process recording")
         payload = _parse_json(text)
-        transcript = str(payload.get("transcript") or "").strip()
-        summary = str(payload.get("summary") or "").strip()
+        transcript = _clean_text(payload.get("transcript"))
+        summary = _clean_text(payload.get("summary"))
+        hint = _clean_text(transcript_hint)
+        if not transcript and hint:
+            transcript = hint
         if not transcript and not summary:
             return TranscribeResponse(ok=False, error="Could not process recording")
         return TranscribeResponse(ok=True, transcript=transcript, summary=summary)
     except Exception:
         logger.warning("Voice transcription failed", exc_info=True)
-        hint = (transcript_hint or "").strip()
+        hint = _clean_text(transcript_hint)
         if hint:
             return TranscribeResponse(ok=True, transcript=hint, summary="")
         return TranscribeResponse(ok=False, error="Could not process recording")

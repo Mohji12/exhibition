@@ -13,6 +13,7 @@ export type CaptureMeta = {
   aiIssues?: string[];
   ocrQuality?: "good" | "fair" | "poor";
   cardImageId?: string;
+  cardImageIdBack?: string;
   audioId?: string;
   audioKey?: string;
   voiceStatus?: "recording" | "saved" | "processing" | "ready" | "failed";

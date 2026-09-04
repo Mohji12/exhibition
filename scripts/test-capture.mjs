@@ -205,8 +205,10 @@ const TIMELINE_RE = /\b(this week|next week|within \d+|6\+?\s*months?|quarter|im
 const ACTION_RE = /\b(demo|brochure|pricing|quotation|quote|follow-up|call|visit|site visit)\b/i;
 
 function summarizeTranscript(text) {
-  const trimmed = text.trim();
+  const trimmed = (text ?? "").trim();
   if (!trimmed) return "";
+  const lower = trimmed.toLowerCase();
+  if (lower === "null" || lower === "undefined" || lower === "none" || lower === "n/a") return "";
   const sentences = [`Booth conversation recorded: ${trimmed.slice(0, 120)}${trimmed.length > 120 ? "…" : ""}.`];
   const products = PRODUCT_KEYWORDS.filter((k) => trimmed.toLowerCase().includes(k.toLowerCase()));
   if (products.length) sentences.push(`Interest areas mentioned: ${products.slice(0, 3).join(", ")}.`);
@@ -383,6 +385,20 @@ assert("Summary mentions timeline or action", summary.includes("next week") || s
 
 const emptySummary = summarizeTranscript("   ");
 assert("Empty transcript → empty summary", emptySummary === "");
+assert("Nullish transcript → empty summary", summarizeTranscript("null") === "");
+assert("Undefined string transcript → empty summary", summarizeTranscript("undefined") === "");
+
+function sanitizeText(value) {
+  if (value == null) return "";
+  const text = String(value).trim();
+  if (!text) return "";
+  const lower = text.toLowerCase();
+  if (lower === "null" || lower === "undefined" || lower === "none" || lower === "n/a") return "";
+  return text;
+}
+assert("sanitizeText null", sanitizeText(null) === "");
+assert("sanitizeText 'null'", sanitizeText("null") === "");
+assert("sanitizeText keeps words", sanitizeText("hello") === "hello");
 
 console.log("\n=== source parity (parse-qr.ts) ===\n");
 const parseQrSrc = readFileSync(resolve(root, "src/lib/domain/capture/parse-qr.ts"), "utf8");

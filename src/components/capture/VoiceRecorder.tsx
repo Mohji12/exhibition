@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { reprocessAudio, transcribeConversation, uploadAudio } from "@/lib/api/http-client";
 import { makeAudioKey, putPendingAudio } from "@/lib/domain/capture/audio-store";
 import { summarizeTranscript } from "@/lib/domain/capture/summarize-transcript";
+import { sanitizeText } from "@/lib/domain/sanitize-text";
 import type { CaptureMeta } from "@/lib/types";
 
 type SpeechRecognitionCtor = new () => SpeechRecognition;
@@ -81,10 +82,11 @@ export function VoiceRecorder({
   useEffect(() => () => stopTracks(), []);
 
   const applyLive = (text: string) => {
-    setLiveNotes(text);
+    const clean = sanitizeText(text);
+    setLiveNotes(clean);
     onCaptureMetaChange({
-      liveTranscript: text,
-      transcript: text,
+      liveTranscript: clean || undefined,
+      transcript: clean || undefined,
       voiceStatus: "recording",
     });
   };
@@ -154,7 +156,8 @@ export function VoiceRecorder({
     audioKey: string;
     liveHint: string;
   }) => {
-    const { audioBase64, mimeType, audioKey, liveHint } = opts;
+    const { audioBase64, mimeType, audioKey, liveHint: rawHint } = opts;
+    const liveHint = sanitizeText(rawHint);
     let audioId = captureMeta?.audioId;
 
     try {
@@ -229,8 +232,10 @@ export function VoiceRecorder({
         return;
       }
 
-      const nextTranscript = result.transcript || liveHint;
-      const nextSummary = result.summary || (nextTranscript ? summarizeTranscript(nextTranscript) : "");
+      const nextTranscript = sanitizeText(result.transcript) || liveHint;
+      const nextSummary =
+        sanitizeText(result.summary) ||
+        (nextTranscript ? summarizeTranscript(nextTranscript) : "");
       if (nextTranscript) {
         onCaptureMetaChange({
           audioId,
@@ -245,20 +250,29 @@ export function VoiceRecorder({
         onCaptureMetaChange({
           audioId,
           audioKey,
+          liveTranscript: undefined,
+          transcript: undefined,
           voiceStatus: "ready",
           voiceError: undefined,
           processingNote: false,
         });
       }
       if (nextSummary) {
-        const current = summaryRef.current.trim();
+        const current = sanitizeText(summaryRef.current);
         const previousAuto = autoSummaryRef.current;
-        if (!current || current === previousAuto || (liveHint && current === summarizeTranscript(liveHint))) {
+        if (
+          !current ||
+          current === previousAuto ||
+          (liveHint && current === summarizeTranscript(liveHint)) ||
+          current.toLowerCase() === "null"
+        ) {
           autoSummaryRef.current = nextSummary;
           onSummaryChange(nextSummary);
         }
+      } else if (sanitizeText(summaryRef.current).toLowerCase() === "null") {
+        onSummaryChange("");
       }
-      toast.success("Summary ready");
+      toast.success(nextSummary || nextTranscript ? "Summary ready" : "Recording saved");
     } catch {
       onCaptureMetaChange({
         audioId,
@@ -275,7 +289,7 @@ export function VoiceRecorder({
 
   const stop = async () => {
     setRecording(false);
-    const liveHint = (liveNotes || transcriptRef.current).trim();
+    const liveHint = sanitizeText(liveNotes || transcriptRef.current);
     const recorder = mediaRef.current;
 
     if (liveHint) {
@@ -285,11 +299,13 @@ export function VoiceRecorder({
         voiceStatus: "processing",
         processingNote: true,
       });
-      if (!summary.trim()) {
+      if (!sanitizeText(summary)) {
         const local = summarizeTranscript(liveHint);
         autoSummaryRef.current = local;
         onSummaryChange(local);
       }
+    } else if (sanitizeText(summary).toLowerCase() === "null") {
+      onSummaryChange("");
     }
 
     if (!recorder || recorder.state === "inactive") {
@@ -338,7 +354,6 @@ export function VoiceRecorder({
         processingNote: true,
       });
       toast.message(PROCESS_NOTE);
-      // Non-blocking background work
       void processInBackground({ audioBase64, mimeType, audioKey, liveHint }).finally(() => {
         setProcessing(false);
       });
@@ -421,8 +436,11 @@ export function VoiceRecorder({
       ) : null}
 
       <Textarea
-        value={summary}
-        onChange={(e) => onSummaryChange(e.target.value)}
+        value={summary === "null" || summary === "undefined" ? "" : summary}
+        onChange={(e) => {
+          const next = e.target.value;
+          onSummaryChange(next === "null" || next === "undefined" ? "" : next);
+        }}
         placeholder="Conversation summary — editable anytime"
         className="mt-3 min-h-28 rounded-xl text-sm"
       />

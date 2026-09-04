@@ -89,14 +89,27 @@ def attach_card_image_to_lead(
 def get_card_image_for_lead(
     conn: pymysql.connections.Connection,
     lead_id: str,
+    *,
+    image_id: str | None = None,
 ) -> dict | None:
     with conn.cursor() as cur:
+        if image_id:
+            cur.execute(
+                """
+                SELECT id, mime_type, image_blob, sha256, created_at
+                FROM lead_card_images
+                WHERE lead_id = %s AND id = %s
+                LIMIT 1
+                """,
+                (lead_id, image_id),
+            )
+            return cur.fetchone()
         cur.execute(
             """
             SELECT id, mime_type, image_blob, sha256, created_at
             FROM lead_card_images
             WHERE lead_id = %s
-            ORDER BY created_at DESC
+            ORDER BY created_at ASC
             LIMIT 1
             """,
             (lead_id,),

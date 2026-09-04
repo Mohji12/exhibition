@@ -15,7 +15,8 @@
     "test:gemini": "node scripts/test-gemini-capture.mjs",
     "test:admin-export": "node scripts/test-admin-export.mjs",
     "test:all": "npm run test:capture && npm run test:logic",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:deep": "npm run test:capture && npm run test:logic && npm run test:e2e"
   },
   "overrides": {
     "rolldown": "1.2.1"

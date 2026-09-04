@@ -1,5 +1,12 @@
-import { Navigate, useRouterState } from "@tanstack/react-router";
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useRouterState } from "@tanstack/react-router";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { PageLoader } from "@/components/PageLoader";
 import { clearSession, readSession, writeSession } from "@/lib/auth-session";
 import type { AuthSession } from "@/lib/types";
@@ -54,6 +61,13 @@ export function useAuth() {
   return ctx;
 }
 
+/** Hard redirect avoids TanStack Router startTransition loops with guarded routes. */
+function hardRedirect(path: string) {
+  if (typeof window === "undefined") return;
+  if (window.location.pathname === path) return;
+  window.location.replace(path);
+}
+
 export function AuthGate({ children }: { children: ReactNode }) {
   const { session, ready } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -61,7 +75,24 @@ export function AuthGate({ children }: { children: ReactNode }) {
     pathname === "/" || pathname.startsWith("/join") || pathname.startsWith("/e/");
   const isAdmin = pathname.startsWith("/admin");
 
-  // Avoid mounting protected pages (and their API calls) before session hydrate.
+  useEffect(() => {
+    if (!ready) return;
+
+    if (!session && !isPublic) {
+      hardRedirect("/");
+      return;
+    }
+
+    if (session && pathname === "/") {
+      hardRedirect(session.user.role === "Admin" ? "/admin" : "/capture");
+      return;
+    }
+
+    if (isAdmin && session && session.user.role !== "Admin") {
+      hardRedirect("/capture");
+    }
+  }, [ready, session, pathname, isPublic, isAdmin]);
+
   if (!ready) {
     if (isPublic) return children;
     return (
@@ -72,15 +103,27 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
 
   if (!session && !isPublic) {
-    return <Navigate to="/" />;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <PageLoader label="Redirecting…" />
+      </div>
+    );
   }
 
   if (session && pathname === "/") {
-    return <Navigate to={session.user.role === "Admin" ? "/admin" : "/capture"} />;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <PageLoader label="Opening booth…" />
+      </div>
+    );
   }
 
   if (isAdmin && session?.user.role !== "Admin") {
-    return <Navigate to="/capture" />;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <PageLoader label="Redirecting…" />
+      </div>
+    );
   }
 
   return children;

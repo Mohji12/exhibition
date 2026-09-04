@@ -475,33 +475,63 @@ function AdminLeadsPage() {
                   {selected.summary}
                 </p>
               ) : null}
-              {selected.captureMeta?.cardImageId || selected.captureSource === "card" ? (
-                <a
-                  className="block text-xs font-medium text-primary underline"
-                  href={`${getApiBase()}/api/admin/leads/${encodeURIComponent(selected.id)}/card-image`}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={(e) => {
-                    const token = readSession()?.token;
-                    if (!token) return;
-                    e.preventDefault();
-                    void fetch(
-                      `${getApiBase()}/api/admin/leads/${encodeURIComponent(selected.id)}/card-image`,
-                      { headers: { Authorization: `Bearer ${token}` } },
-                    )
-                      .then(async (res) => {
-                        if (!res.ok) throw new Error("No card image");
-                        return res.blob();
-                      })
-                      .then((blob) => {
-                        const url = URL.createObjectURL(blob);
-                        window.open(url, "_blank", "noopener");
-                      })
-                      .catch(() => toast.message("No card image on file"));
-                  }}
-                >
-                  View card photo backup
-                </a>
+              {selected.captureMeta?.cardImageId ||
+              selected.captureMeta?.cardImageIdBack ||
+              selected.captureSource === "card" ? (
+                <div className="space-y-1">
+                  <button
+                    type="button"
+                    className="block text-left text-xs font-medium text-primary underline"
+                    onClick={() => {
+                      const token = readSession()?.token;
+                      if (!token) return;
+                      const imageId = selected.captureMeta?.cardImageId;
+                      const q = imageId ? `?image_id=${encodeURIComponent(imageId)}` : "";
+                      void fetch(
+                        `${getApiBase()}/api/admin/leads/${encodeURIComponent(selected.id)}/card-image${q}`,
+                        { headers: { Authorization: `Bearer ${token}` } },
+                      )
+                        .then(async (res) => {
+                          if (!res.ok) throw new Error("No card image");
+                          return res.blob();
+                        })
+                        .then((blob) => {
+                          const url = URL.createObjectURL(blob);
+                          window.open(url, "_blank", "noopener");
+                        })
+                        .catch(() => toast.message("No card image on file"));
+                    }}
+                  >
+                    View front card photo
+                  </button>
+                  {selected.captureMeta?.cardImageIdBack ? (
+                    <button
+                      type="button"
+                      className="block text-left text-xs font-medium text-primary underline"
+                      onClick={() => {
+                        const token = readSession()?.token;
+                        if (!token) return;
+                        const imageId = selected.captureMeta?.cardImageIdBack;
+                        const q = imageId ? `?image_id=${encodeURIComponent(imageId)}` : "";
+                        void fetch(
+                          `${getApiBase()}/api/admin/leads/${encodeURIComponent(selected.id)}/card-image${q}`,
+                          { headers: { Authorization: `Bearer ${token}` } },
+                        )
+                          .then(async (res) => {
+                            if (!res.ok) throw new Error("No card image");
+                            return res.blob();
+                          })
+                          .then((blob) => {
+                            const url = URL.createObjectURL(blob);
+                            window.open(url, "_blank", "noopener");
+                          })
+                          .catch(() => toast.message("No back card image on file"));
+                      }}
+                    >
+                      View back card photo
+                    </button>
+                  ) : null}
+                </div>
               ) : null}
               <div className="flex flex-col gap-2 pt-2">
                 <Button variant="outline" className="rounded-xl" asChild>

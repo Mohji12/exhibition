@@ -21,7 +21,6 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const { session, logout, ready } = useAuth();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const navigating = useRouterState({ select: (s) => s.isLoading || s.isTransitioning });
   const user = session?.user;
 
   const isActive = (to: string, exact: boolean) => {
@@ -113,13 +112,6 @@ export function AdminShell({ children }: { children: ReactNode }) {
           </Button>
         </div>
         <main className="relative flex-1 px-4 py-6 sm:px-8">
-          {navigating ? (
-            <div className="pointer-events-none absolute inset-0 z-10 flex items-start justify-center bg-background/40 pt-24">
-              <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-card">
-                <PageLoader label="Loading…" compact className="py-2" />
-              </div>
-            </div>
-          ) : null}
           {children}
         </main>
       </div>

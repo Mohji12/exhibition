@@ -14,8 +14,12 @@ const TIMELINE_RE = /\b(this week|next week|within \d+|6\+?\s*months?|quarter|im
 const ACTION_RE = /\b(demo|brochure|pricing|quotation|quote|follow-up|call|visit|site visit)\b/i;
 
 export function summarizeTranscript(transcript: string): string {
-  const text = transcript.trim();
+  const text = (transcript ?? "").trim();
   if (!text) return "";
+  const lower = text.toLowerCase();
+  if (lower === "null" || lower === "undefined" || lower === "none" || lower === "n/a") {
+    return "";
+  }
 
   const sentences: string[] = [];
   sentences.push(`Booth conversation recorded: ${text.slice(0, 120)}${text.length > 120 ? "…" : ""}.`);

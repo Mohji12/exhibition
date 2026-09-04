@@ -240,11 +240,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (uploaded.ok && uploaded.id) {
             await deletePendingCardImage(img.key);
             if (img.leadId) {
+              const isBack = img.side === "back" || img.key.includes(":back:");
               const withImageMeta = (l: Lead): Lead => ({
                 ...l,
                 captureMeta: {
                   ...l.captureMeta,
-                  cardImageId: uploaded.id,
+                  ...(isBack
+                    ? { cardImageIdBack: uploaded.id }
+                    : { cardImageId: uploaded.id }),
                 },
                 synced: false,
               });

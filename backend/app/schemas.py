@@ -33,6 +33,7 @@ class CaptureMeta(CamelModel):
     ai_issues: list[str] | None = None
     ocr_quality: Literal["good", "fair", "poor"] | None = None
     card_image_id: str | None = None
+    card_image_id_back: str | None = None
     audio_id: str | None = None
     audio_key: str | None = None
     voice_status: Literal["recording", "saved", "processing", "ready", "failed"] | None = None

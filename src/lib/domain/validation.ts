@@ -27,6 +27,7 @@ export const leadSchema = z.object({
       aiIssues: z.array(z.string()).optional(),
       ocrQuality: z.enum(["good", "fair", "poor"]).optional(),
       cardImageId: z.string().optional(),
+      cardImageIdBack: z.string().optional(),
       fieldConfidence: z.record(z.number()).optional(),
     })
     .optional(),

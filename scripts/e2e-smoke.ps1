@@ -316,6 +316,19 @@ foreach ($u in $sweep) {
   try { Invoke-Api DELETE "/api/admin/users/$($u.id)" -Token $adminTok | Out-Null } catch {}
 }
 
+# Remove custom interest tag created by this smoke run (and similar leftovers)
+try {
+  $delInterest = Invoke-Api POST /api/interests/remove @{ name = $customTag } -Token $adminTok
+  Assert-True ($delInterest.ok -eq $true -or $delInterest.error -like "*required*") "Cleanup custom interest tag" ("msg=" + $delInterest.error)
+} catch {
+  Write-Host "WARN: could not delete custom interest $customTag"
+}
+
+$seedAfter = Invoke-Api GET /api/seed -Token $adminTok
+$interestNames = @($seedAfter.interests)
+$leaked = @($interestNames | Where-Object { $_ -like "*E2E*" -or $_ -like "*e2e*" -or $_ -like "Custom E2E Widget*" })
+Assert-True ($leaked.Count -eq 0) "No e2e interest tags left in catalog" ("found " + ($leaked -join ", "))
+
 Write-Host ""
 Write-Host "=== SUMMARY ===" -ForegroundColor Cyan
 Write-Host "PASS=$pass FAIL=$fail"

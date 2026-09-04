@@ -614,11 +614,14 @@ def get_lead(lead_id: str) -> Lead:
 
 
 @router.get("/leads/{lead_id}/card-image")
-def get_lead_card_image(lead_id: str) -> Response:
+def get_lead_card_image(
+    lead_id: str,
+    image_id: str | None = Query(default=None),
+) -> Response:
     from app.services.card_images import get_card_image_for_lead
 
     with get_connection() as conn:
-        row = get_card_image_for_lead(conn, lead_id)
+        row = get_card_image_for_lead(conn, lead_id, image_id=image_id)
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card image not found")
     return Response(

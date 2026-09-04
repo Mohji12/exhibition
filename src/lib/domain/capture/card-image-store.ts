@@ -7,6 +7,7 @@ export type PendingCardImage = {
   imageBase64: string;
   mimeType: string;
   leadId?: string;
+  side?: "front" | "back";
   createdAt: string;
 };
 
