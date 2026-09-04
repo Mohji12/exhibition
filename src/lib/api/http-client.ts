@@ -132,6 +132,7 @@ export async function patchMyProfile(body: {
   company?: string;
   designation?: string;
   mobile?: string;
+  eventName?: string;
   loginPin?: string;
 }): Promise<AuthSession> {
   return apiFetch<AuthSession>("/api/auth/me", {
@@ -150,6 +151,7 @@ export type PublicExhibitor = {
   company?: string | null;
   designation?: string | null;
   mobile?: string | null;
+  eventName?: string | null;
   interests: string[];
 };
 
@@ -222,6 +224,7 @@ export async function patchAdminUser(
     company?: string;
     designation?: string;
     mobile?: string;
+    eventName?: string;
     loginPin?: string;
   },
 ): Promise<AuthUser> {

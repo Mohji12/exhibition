@@ -32,7 +32,7 @@ from app.services.mail import mail_configured, send_pin_email
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 _USER_COLS = (
-    "id, name, email, role, status, company, designation, mobile, share_token, "
+    "id, name, email, role, status, company, designation, mobile, event_name, share_token, "
     "login_pin_plain, last_login_at, created_at, activated_at"
 )
 
@@ -47,6 +47,7 @@ def _row_to_user(row: dict, leads_captured: int = 0, include_pin: bool = False) 
         company=row.get("company"),
         designation=row.get("designation"),
         mobile=row.get("mobile"),
+        event_name=row.get("event_name"),
         share_token=row.get("share_token"),
         login_pin_plain=row.get("login_pin_plain") if include_pin else None,
         last_login_at=row.get("last_login_at"),
@@ -218,6 +219,7 @@ def patch_me(
         and body.company is None
         and body.designation is None
         and body.mobile is None
+        and body.event_name is None
         and body.login_pin is None
     ):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nothing to update")
@@ -235,6 +237,9 @@ def patch_me(
             body.designation.strip() if body.designation is not None else row.get("designation")
         )
         new_mobile = body.mobile.strip() if body.mobile is not None else row.get("mobile")
+        new_event_name = (
+            body.event_name.strip() if body.event_name is not None else row.get("event_name")
+        )
 
         if not new_name:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Name is required")
@@ -253,6 +258,7 @@ def patch_me(
             "company = %s",
             "designation = %s",
             "mobile = %s",
+            "event_name = %s",
         ]
         params: list = [
             new_name,
@@ -260,6 +266,7 @@ def patch_me(
             new_company or None,
             new_designation or None,
             new_mobile or None,
+            new_event_name or None,
         ]
         if body.login_pin:
             sets.append("pin_hash = %s")

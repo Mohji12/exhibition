@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ShieldCheck } from "lucide-react";
+import { PageLoader } from "@/components/PageLoader";
 import { activateAccount, lookupInvite } from "@/lib/api/http-client";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -71,9 +71,8 @@ function JoinPage() {
         </div>
 
         <div className="mt-6 rounded-xl bg-primary-soft px-4 py-3">
-          <p className="text-sm font-semibold text-primary">MEDICON 2026</p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-            <ShieldCheck className="size-3.5 text-accent" />
+          <p className="text-sm font-semibold text-primary">Exhibitor activation</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
             Enter the 4-digit PIN shown under the admin QR
           </p>
         </div>
@@ -81,7 +80,7 @@ function JoinPage() {
         {inviteOk === false ? (
           <p className="mt-6 text-sm text-destructive">{inviteError}</p>
         ) : inviteOk === null ? (
-          <p className="mt-6 text-sm text-muted-foreground">Checking invite…</p>
+          <PageLoader label="Checking invite…" compact className="mt-4" />
         ) : (
           <form
             className="mt-6 space-y-4"

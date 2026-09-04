@@ -271,7 +271,9 @@ function VisitorExhibitorPage() {
       <div className="mx-auto flex min-h-screen w-full max-w-[430px] flex-col bg-background sm:my-6 sm:min-h-[calc(100vh-3rem)] sm:rounded-3xl sm:border sm:border-border sm:overflow-hidden">
         <header className="bg-[image:var(--gradient-brand)] px-5 pb-6 pt-8 text-primary-foreground">
           <p className="text-[11px] uppercase tracking-[0.18em] text-primary-foreground/70">
-            Conninter · MEDICON 2026
+            {exhibitor?.eventName?.trim()
+              ? `FUNNEL · ${exhibitor.eventName.trim()}`
+              : "FUNNEL by Conninter"}
           </p>
           <h1 className="mt-1 text-xl font-semibold">Meet the exhibitor</h1>
           <p className="mt-1 text-xs text-primary-foreground/80">Leave your details in one step</p>

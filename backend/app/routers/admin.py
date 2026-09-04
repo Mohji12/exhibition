@@ -55,6 +55,7 @@ def _user_out(row: dict) -> AuthUserOut:
         company=row.get("company"),
         designation=row.get("designation"),
         mobile=row.get("mobile"),
+        event_name=row.get("event_name"),
         share_token=row.get("share_token"),
         login_pin_plain=row.get("login_pin_plain"),
         last_login_at=row.get("last_login_at"),
@@ -67,7 +68,7 @@ def _user_out(row: dict) -> AuthUserOut:
 _USER_WITH_COUNTS_SQL = """
             SELECT
               u.id, u.name, u.email, u.role, u.status, u.company, u.designation, u.mobile,
-              u.share_token, u.login_pin_plain, u.last_login_at, u.created_at, u.activated_at,
+              u.event_name, u.share_token, u.login_pin_plain, u.last_login_at, u.created_at, u.activated_at,
               COUNT(l.id) AS leads_captured
             FROM users u
             LEFT JOIN leads l ON l.captured_by = u.id
@@ -314,6 +315,7 @@ def patch_user(
         and body.company is None
         and body.designation is None
         and body.mobile is None
+        and body.event_name is None
         and body.login_pin is None
     ):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nothing to update")
@@ -321,7 +323,7 @@ def patch_user(
     with get_connection() as conn, conn.cursor() as cur:
         cur.execute(
             """
-            SELECT id, name, email, role, status, company, designation, mobile,
+            SELECT id, name, email, role, status, company, designation, mobile, event_name,
                    share_token, created_at, activated_at
             FROM users WHERE id = %s
             """,
@@ -340,6 +342,9 @@ def patch_user(
             body.designation.strip() if body.designation is not None else row.get("designation")
         )
         new_mobile = body.mobile.strip() if body.mobile is not None else row.get("mobile")
+        new_event_name = (
+            body.event_name.strip() if body.event_name is not None else row.get("event_name")
+        )
 
         if user_id == admin.id and (new_status == "disabled" or new_role != "Admin"):
             raise HTTPException(
@@ -372,6 +377,7 @@ def patch_user(
             "company = %s",
             "designation = %s",
             "mobile = %s",
+            "event_name = %s",
         ]
         params: list = [
             new_status,
@@ -381,6 +387,7 @@ def patch_user(
             new_company or None,
             new_designation or None,
             new_mobile or None,
+            new_event_name or None,
         ]
         if body.login_pin:
             sets.append("pin_hash = %s")

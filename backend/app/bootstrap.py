@@ -109,6 +109,9 @@ def _ensure_user_profile_columns(cur) -> None:
     if not _column_exists(cur, "users", "last_login_at"):
         cur.execute("ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP NULL")
         logger.info("Added users.last_login_at column")
+    if not _column_exists(cur, "users", "event_name"):
+        cur.execute("ALTER TABLE users ADD COLUMN event_name VARCHAR(200) NULL")
+        logger.info("Added users.event_name column")
 
 
 def _ensure_user(cur, name: str, email: str, pin: str, role: str) -> str:

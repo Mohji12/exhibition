@@ -34,7 +34,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           <div>
             <p className="text-[11px] uppercase tracking-[0.2em] text-primary-foreground/70">FUNNEL</p>
             <p className="mt-1 text-xl font-semibold tracking-tight">by Conninter</p>
-            <p className="text-xs text-primary-foreground/75">Admin · MEDICON 2026</p>
+            <p className="text-xs text-primary-foreground/75">Admin</p>
           </div>
           {user ? (
             <div className="grid size-10 place-items-center rounded-full bg-card/15 text-sm font-semibold lg:mt-6 lg:hidden">

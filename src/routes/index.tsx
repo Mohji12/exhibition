@@ -1,6 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { ShieldCheck } from "lucide-react";
 import { forgotPinRequest, loginRequest } from "@/lib/api/http-client";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -13,8 +12,7 @@ export const Route = createFileRoute("/")({
       { title: "FUNNEL by Conninter — Sign in" },
       {
         name: "description",
-        content:
-          "FUNNEL by Conninter — booth lead capture for MEDICON 2026. Sign in to capture visitors and follow up.",
+        content: "FUNNEL by Conninter — booth lead capture. Sign in to capture visitors and follow up.",
       },
       { property: "og:title", content: "FUNNEL by Conninter — Sign in" },
     ],
@@ -47,16 +45,8 @@ function LoginPage() {
           </div>
         </div>
 
-        <div className="mt-6 rounded-xl bg-primary-soft px-4 py-3">
-          <p className="text-sm font-semibold text-primary">MEDICON 2026</p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-            <ShieldCheck className="size-3.5 text-accent" />
-            Access valid until 30 Sept 2026
-          </p>
-        </div>
-
         <form
-          className="mt-6 space-y-4"
+          className="mt-8 space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
             setError("");

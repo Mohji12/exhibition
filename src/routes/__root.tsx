@@ -79,7 +79,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { title: "FUNNEL by Conninter" },
       {
         name: "description",
-        content: "FUNNEL by Conninter — booth lead capture for MEDICON 2026.",
+        content: "FUNNEL by Conninter — booth lead capture for exhibitions.",
       },
       { name: "author", content: "Conninter" },
       { property: "og:title", content: "FUNNEL by Conninter" },

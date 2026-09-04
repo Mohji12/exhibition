@@ -98,7 +98,9 @@ function CardPage() {
               {user?.company?.trim() || "CONNINTER"}
             </p>
             <p className="text-[11px] text-primary-foreground/75">
-              {user?.designation?.trim() || "Exhibitor · MEDICON 2026"}
+              {user?.eventName?.trim() ||
+                user?.designation?.trim() ||
+                "Exhibitor"}
             </p>
           </div>
         </div>

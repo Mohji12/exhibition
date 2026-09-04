@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { PageLoader } from "@/components/PageLoader";
 import { fetchAdminAppointments, patchAdminAppointment } from "@/lib/api/http-client";
 import { useAuth } from "@/lib/auth";
 import type { Appointment } from "@/lib/types";
@@ -16,14 +17,18 @@ function AdminFollowupsPage() {
   const { session, ready } = useAuth();
   const [items, setItems] = useState<Appointment[]>([]);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const reload = () =>
-    fetchAdminAppointments()
+  const reload = () => {
+    setLoading(true);
+    return fetchAdminAppointments()
       .then(setItems)
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : "Could not load appointments"),
-      );
+      )
+      .finally(() => setLoading(false));
+  };
 
   useEffect(() => {
     if (!ready || session?.user.role !== "Admin") return;
@@ -55,7 +60,9 @@ function AdminFollowupsPage() {
       </p>
       {error ? <p className="mt-4 text-sm text-destructive">{error}</p> : null}
 
-      <ul className="mt-8 divide-y divide-border border-y border-border">
+      {loading ? <PageLoader label="Loading follow-ups…" /> : null}
+
+      <ul className={loading ? "sr-only" : "mt-8 divide-y divide-border border-y border-border"}>
         {items.length === 0 ? (
           <li className="py-8 text-sm text-muted-foreground">No appointments yet.</li>
         ) : (

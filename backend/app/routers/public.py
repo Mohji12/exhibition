@@ -39,7 +39,7 @@ def _client_key(request: Request) -> str:
 def _load_active_exhibitor(cur, token: str) -> dict | None:
     cur.execute(
         """
-        SELECT id, name, email, company, designation, mobile, status, role
+        SELECT id, name, email, company, designation, mobile, event_name, status, role
         FROM users
         WHERE share_token = %s
         """,
@@ -65,6 +65,7 @@ def get_public_exhibitor(token: str) -> PublicExhibitorOut:
         company=exhibitor.get("company"),
         designation=exhibitor.get("designation"),
         mobile=exhibitor.get("mobile"),
+        event_name=exhibitor.get("event_name"),
         interests=interests,
     )
 

@@ -30,7 +30,7 @@ export const Route = createFileRoute("/schedule")({
       { property: "og:title", content: "Follow-up schedule — Conninter Visitor Book" },
       {
         property: "og:description",
-        content: "Upcoming appointments with MEDICON 2026 visitors and quick scheduling.",
+        content: "Upcoming appointments with booth visitors and quick scheduling.",
       },
     ],
   }),

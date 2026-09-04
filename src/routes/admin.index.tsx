@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { PageLoader } from "@/components/PageLoader";
 import { fetchAdminOverview } from "@/lib/api/http-client";
 import { useAuth } from "@/lib/auth";
 import type { AdminOverview } from "@/lib/types";
@@ -15,16 +16,21 @@ function AdminOverviewPage() {
   const { session, ready } = useAuth();
   const [data, setData] = useState<AdminOverview | null>(null);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!ready || session?.user.role !== "Admin") return;
     let cancelled = false;
+    setLoading(true);
     fetchAdminOverview()
       .then((next) => {
         if (!cancelled) setData(next);
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Could not load overview");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
     return () => {
       cancelled = true;
@@ -39,12 +45,15 @@ function AdminOverviewPage() {
       <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Conninter</p>
       <h1 className="mt-1 text-3xl font-semibold tracking-tight text-foreground">Booth today</h1>
       <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-        Staff, lead quality, capture sources and follow-ups for MEDICON 2026. QR invite creates
-        exhibitors; each exhibitor only sees their own visitor leads.
+        Staff, lead quality, capture sources and follow-ups. QR invite creates exhibitors; each
+        exhibitor only sees their own visitor leads.
       </p>
 
       {error ? <p className="mt-6 text-sm text-destructive">{error}</p> : null}
-
+      {loading ? (
+        <PageLoader label="Loading overview…" />
+      ) : (
+        <>
       <dl className="mt-10 grid grid-cols-2 gap-x-8 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
         <Stat label="Active staff" value={data?.staffActive} />
         <Stat label="Admins" value={data?.admins} />
@@ -108,6 +117,8 @@ function AdminOverviewPage() {
           Invite exhibitors
         </Link>
       </p>
+        </>
+      )}
     </div>
   );
 }

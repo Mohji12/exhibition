@@ -38,6 +38,7 @@ function ProfilePage() {
   const [company, setCompany] = useState("");
   const [designation, setDesignation] = useState("");
   const [mobile, setMobile] = useState("");
+  const [eventName, setEventName] = useState("");
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -54,6 +55,7 @@ function ProfilePage() {
     setCompany(user.company ?? "");
     setDesignation(user.designation ?? "");
     setMobile(user.mobile ?? "");
+    setEventName(user.eventName ?? "");
   }, [user]);
 
   const stopCamera = useCallback(() => {
@@ -176,8 +178,9 @@ function ProfilePage() {
         company: string;
         designation: string;
         mobile: string;
+        eventName: string;
         loginPin?: string;
-      } = { name, email, company, designation, mobile };
+      } = { name, email, company, designation, mobile, eventName };
       if (pin.trim()) body.loginPin = pin.trim();
       const next = await patchMyProfile(body);
       setSession(next);
@@ -198,15 +201,16 @@ function ProfilePage() {
           <>
             <p className="text-lg font-semibold text-foreground">{user.name}</p>
             <p className="mt-0.5 text-sm text-muted-foreground">{user.email}</p>
-            {user.company || user.designation || user.mobile ? (
+            {user.company || user.designation || user.mobile || user.eventName ? (
               <div className="mt-2 space-y-0.5 text-sm text-muted-foreground">
+                {user.eventName ? <p className="font-medium text-foreground">{user.eventName}</p> : null}
                 {user.company ? <p>{user.company}</p> : null}
                 {user.designation ? <p>{user.designation}</p> : null}
                 {user.mobile ? <p>{user.mobile}</p> : null}
               </div>
             ) : (
               <p className="mt-2 text-sm text-warning-foreground">
-                Add company and mobile so visitors see a complete card.
+                Add your exhibition name, company and mobile so visitors see a complete card.
               </p>
             )}
             <span
@@ -243,6 +247,16 @@ function ProfilePage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="h-11 rounded-xl"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="profile-event">Exhibition name</Label>
+              <Input
+                id="profile-event"
+                value={eventName}
+                onChange={(e) => setEventName(e.target.value)}
+                className="h-11 rounded-xl"
+                placeholder="e.g. your expo or booth event"
               />
             </div>
             <div className="space-y-1.5">
@@ -302,6 +316,7 @@ function ProfilePage() {
                     setCompany(user.company ?? "");
                     setDesignation(user.designation ?? "");
                     setMobile(user.mobile ?? "");
+                    setEventName(user.eventName ?? "");
                   }
                 }}
               >

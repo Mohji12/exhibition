@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
+import { InlineLoader, PageLoader } from "@/components/PageLoader";
 import { exportAdminLeadsXlsx, generateBoothReport } from "@/lib/api/http-client";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -27,7 +28,7 @@ function AdminReportPage() {
       setMarkdown(report.markdown);
       setGeneratedAt(report.generatedAt);
       setUsedAi(report.usedAi);
-      toast.success(report.usedAi ? "AI report ready" : "Stats summary ready");
+      toast.success(report.usedAi ? "Report ready" : "Stats summary ready");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Report failed");
     } finally {
@@ -69,13 +70,14 @@ function AdminReportPage() {
       <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Conninter</p>
       <h1 className="mt-1 text-3xl font-semibold tracking-tight text-foreground">Booth report</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Generate an AI narrative from booth stats and download a full Excel workbook (Leads, Stats,
+        Generate a booth narrative from stats and download a full Excel workbook (Leads, Stats,
         Summary).
       </p>
 
       <div className="mt-6 flex flex-wrap gap-2">
         <Button className="h-10 rounded-xl" disabled={busy} onClick={() => void onGenerate()}>
-          Generate report
+          {busy ? <InlineLoader className="mr-1" /> : null}
+          {busy ? "Working…" : "Generate report"}
         </Button>
         <Button
           variant="outline"
@@ -91,12 +93,15 @@ function AdminReportPage() {
           disabled={busy}
           onClick={() => void onExcel()}
         >
+          {busy ? <InlineLoader className="mr-1" /> : null}
           Download Excel
         </Button>
         <Button variant="ghost" className="h-10 rounded-xl" asChild>
           <Link to="/admin/leads">Open leads</Link>
         </Button>
       </div>
+
+      {busy && !markdown ? <PageLoader label="Preparing report…" compact className="mt-6" /> : null}
 
       {generatedAt ? (
         <p className="mt-4 text-[11px] text-muted-foreground">

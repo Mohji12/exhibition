@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { PageLoader } from "@/components/PageLoader";
 import {
   deleteAdminUser,
   fetchAdminLeads,
@@ -32,14 +33,17 @@ function ClientDetailPage() {
   const [company, setCompany] = useState("");
   const [designation, setDesignation] = useState("");
   const [mobile, setMobile] = useState("");
+  const [eventName, setEventName] = useState("");
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [shownPin, setShownPin] = useState("");
 
   useEffect(() => {
     if (!ready || session?.user.role !== "Admin") return;
     let cancelled = false;
+    setLoading(true);
     Promise.all([fetchAdminUser(userId), fetchAdminLeads({ capturedBy: userId })])
       .then(([nextUser, nextLeads]) => {
         if (cancelled) return;
@@ -49,11 +53,15 @@ function ClientDetailPage() {
         setCompany(nextUser.company ?? "");
         setDesignation(nextUser.designation ?? "");
         setMobile(nextUser.mobile ?? "");
+        setEventName(nextUser.eventName ?? "");
         setShownPin(nextUser.loginPinPlain ?? "");
         setLeads(nextLeads);
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Could not load exhibitor");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
     return () => {
       cancelled = true;
@@ -71,8 +79,9 @@ function ClientDetailPage() {
         company: string;
         designation: string;
         mobile: string;
+        eventName: string;
         loginPin?: string;
-      } = { name, email, company, designation, mobile };
+      } = { name, email, company, designation, mobile, eventName };
       if (pin.trim()) body.loginPin = pin.trim();
       const next = await patchAdminUser(user.id, body);
       setUser(next);
@@ -122,8 +131,15 @@ function ClientDetailPage() {
         Joined via invite QR + PIN. Only this exhibitor’s visitor leads are listed below.
       </p>
       {error ? <p className="mt-4 text-sm text-destructive">{error}</p> : null}
+      {loading ? <PageLoader label="Loading exhibitor…" /> : null}
 
-      <section className="mt-8 space-y-3 rounded-2xl border border-border bg-card p-4 shadow-card">
+      <section
+        className={
+          loading
+            ? "sr-only"
+            : "mt-8 space-y-3 rounded-2xl border border-border bg-card p-4 shadow-card"
+        }
+      >
         <h2 className="text-sm font-semibold text-foreground">Edit exhibitor</h2>
         <div className="space-y-1.5">
           <Label htmlFor="name">Name</Label>
@@ -137,6 +153,16 @@ function ClientDetailPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="h-11 rounded-xl"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="eventName">Exhibition name</Label>
+          <Input
+            id="eventName"
+            value={eventName}
+            onChange={(e) => setEventName(e.target.value)}
+            className="h-11 rounded-xl"
+            placeholder="Optional — shown on their booth"
           />
         </div>
         <div className="space-y-1.5">
@@ -266,7 +292,7 @@ function ClientDetailPage() {
         </div>
       </section>
 
-      <section className="mt-10">
+      <section className={loading ? "sr-only" : "mt-10"}>
         <h2 className="text-lg font-semibold text-foreground">Their visitor leads</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           {leads.length} lead{leads.length === 1 ? "" : "s"} captured by this exhibitor.

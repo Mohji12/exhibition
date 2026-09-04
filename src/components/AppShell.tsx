@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { CreditCard, LayoutList, CalendarDays, ScanLine, UserRound, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
+import { PageLoader } from "@/components/PageLoader";
 import { useAuth } from "@/lib/auth";
 import { initials } from "@/lib/auth-session";
 import { useStore } from "@/lib/store";
@@ -50,7 +51,9 @@ export function AppShell({
   action?: ReactNode;
 }) {
   const { session } = useAuth();
+  const { seedSource } = useStore();
   const letters = session?.user ? initials(session.user.name) : "";
+  const booting = seedSource === "loading";
 
   return (
     <div className="min-h-screen bg-background">
@@ -59,7 +62,9 @@ export function AppShell({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[11px] uppercase tracking-[0.18em] text-primary-foreground/70">
-                FUNNEL · MEDICON 2026
+                {session?.user.eventName?.trim()
+                  ? `FUNNEL · ${session.user.eventName.trim()}`
+                  : "FUNNEL"}
               </p>
               <h1 className="mt-0.5 text-xl font-semibold">{title}</h1>
               {subtitle ? (
@@ -81,19 +86,29 @@ export function AppShell({
         </header>
 
         <main className="flex-1 px-4 pb-28 pt-4">
-          {session?.user.role === "Rep" &&
-          !(session.user.company?.trim() && session.user.mobile?.trim()) ? (
-            <Link
-              to="/profile"
-              className="mb-4 block rounded-xl border border-primary/20 bg-primary-soft px-4 py-3 text-sm text-primary"
-            >
-              <span className="font-semibold">Complete your booth profile</span>
-              <span className="mt-0.5 block text-xs text-primary/80">
-                Add company and mobile — or scan your visiting card on Profile.
-              </span>
-            </Link>
-          ) : null}
-          {children}
+          {booting ? (
+            <PageLoader label="Loading your booth data…" />
+          ) : (
+            <>
+              {session?.user.role === "Rep" &&
+              !(
+                session.user.company?.trim() &&
+                session.user.mobile?.trim() &&
+                session.user.eventName?.trim()
+              ) ? (
+                <Link
+                  to="/profile"
+                  className="mb-4 block rounded-xl border border-primary/20 bg-primary-soft px-4 py-3 text-sm text-primary"
+                >
+                  <span className="font-semibold">Complete your booth profile</span>
+                  <span className="mt-0.5 block text-xs text-primary/80">
+                    Add exhibition name, company and mobile — or scan your visiting card on Profile.
+                  </span>
+                </Link>
+              ) : null}
+              {children}
+            </>
+          )}
         </main>
 
         <nav className="sticky bottom-0 z-20 border-t border-border bg-card/95 backdrop-blur">

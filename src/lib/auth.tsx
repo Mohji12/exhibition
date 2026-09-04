@@ -1,5 +1,6 @@
 import { Navigate, useRouterState } from "@tanstack/react-router";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { PageLoader } from "@/components/PageLoader";
 import { clearSession, readSession, writeSession } from "@/lib/auth-session";
 import type { AuthSession } from "@/lib/types";
 
@@ -63,7 +64,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
   // Avoid mounting protected pages (and their API calls) before session hydrate.
   if (!ready) {
     if (isPublic) return children;
-    return <div className="min-h-screen bg-[image:var(--gradient-brand)]" />;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <PageLoader label="Signing you in…" />
+      </div>
+    );
   }
 
   if (!session && !isPublic) {

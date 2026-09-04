@@ -152,6 +152,7 @@ class AuthUserOut(CamelModel):
     company: str | None = None
     designation: str | None = None
     mobile: str | None = None
+    event_name: str | None = None
     share_token: str | None = None
     login_pin_plain: str | None = None
     last_login_at: datetime | None = None
@@ -214,6 +215,7 @@ class PatchMeRequest(CamelModel):
     company: str | None = Field(default=None, max_length=200)
     designation: str | None = Field(default=None, max_length=120)
     mobile: str | None = Field(default=None, max_length=32)
+    event_name: str | None = Field(default=None, max_length=200)
     login_pin: Pin4 | None = None
 
 
@@ -223,6 +225,7 @@ class PublicExhibitorOut(CamelModel):
     company: str | None = None
     designation: str | None = None
     mobile: str | None = None
+    event_name: str | None = None
     interests: list[str] = Field(default_factory=list)
 
 
@@ -302,6 +305,7 @@ class PatchUserRequest(CamelModel):
     company: str | None = Field(default=None, max_length=200)
     designation: str | None = Field(default=None, max_length=120)
     mobile: str | None = Field(default=None, max_length=32)
+    event_name: str | None = Field(default=None, max_length=200)
     login_pin: Pin4 | None = None
 
 

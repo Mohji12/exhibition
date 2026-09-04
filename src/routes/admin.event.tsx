@@ -7,7 +7,7 @@ import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/admin/event")({
   head: () => ({
-    meta: [{ title: "Event settings — Conninter" }],
+    meta: [{ title: "Event settings — FUNNEL" }],
   }),
   component: EventSettingsPage,
 });
@@ -23,26 +23,12 @@ function EventSettingsPage() {
 
   return (
     <div className="mx-auto max-w-xl">
-      <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Conninter</p>
+      <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">FUNNEL</p>
       <h1 className="mt-1 text-3xl font-semibold tracking-tight text-foreground">Event</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        MEDICON 2026 dates and the product-interest tags used on the lead form.
+        Exhibition names are set by each exhibitor on their Profile. Manage the shared product-interest
+        tags used on the lead form here.
       </p>
-
-      <dl className="mt-8 space-y-3 text-sm">
-        <div className="flex justify-between gap-4 border-b border-border py-3">
-          <dt className="text-muted-foreground">Event name</dt>
-          <dd className="font-medium text-foreground">MEDICON 2026</dd>
-        </div>
-        <div className="flex justify-between gap-4 border-b border-border py-3">
-          <dt className="text-muted-foreground">Date range</dt>
-          <dd className="font-medium text-foreground">28 – 30 Sept 2026</dd>
-        </div>
-        <div className="flex justify-between gap-4 border-b border-border py-3">
-          <dt className="text-muted-foreground">Access window</dt>
-          <dd className="font-medium text-foreground">Valid until 30 Sept 2026</dd>
-        </div>
-      </dl>
 
       <h2 className="mt-10 text-lg font-semibold text-foreground">Product interests</h2>
       <div className="mt-4 flex flex-wrap gap-2">

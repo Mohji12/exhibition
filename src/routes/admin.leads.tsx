@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { PageLoader, InlineLoader } from "@/components/PageLoader";
 import {
   deleteAdminLead,
   exportAdminLeadsCsv,
@@ -62,19 +63,23 @@ function AdminLeadsPage() {
   const navigate = useNavigate({ from: Route.fullPath });
   const [leads, setLeads] = useState<Lead[]>([]);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Lead | null>(null);
   const [busy, setBusy] = useState(false);
   const [qDraft, setQDraft] = useState(search.q ?? "");
 
   const filters = searchToFilters(search);
 
-  const reload = () =>
-    fetchAdminLeads(filters)
+  const reload = () => {
+    setLoading(true);
+    return fetchAdminLeads(filters)
       .then((rows) => {
         setLeads(rows);
         setSelected((prev) => (prev ? rows.find((l) => l.id === prev.id) ?? null : null));
       })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not load leads"));
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not load leads"))
+      .finally(() => setLoading(false));
+  };
 
   useEffect(() => {
     if (!ready || session?.user.role !== "Admin") return;
@@ -164,9 +169,11 @@ function AdminLeadsPage() {
             disabled={busy}
             onClick={() => void onExport()}
           >
+            {busy ? <InlineLoader className="mr-1" /> : null}
             Export CSV
           </Button>
           <Button className="h-10 rounded-xl" disabled={busy} onClick={() => void onExportExcel()}>
+            {busy ? <InlineLoader className="mr-1" /> : null}
             Export Excel
           </Button>
         </div>
@@ -244,7 +251,9 @@ function AdminLeadsPage() {
 
       {error ? <p className="mt-4 text-sm text-destructive">{error}</p> : null}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_320px]">
+      {loading ? <PageLoader label="Loading leads…" compact className="mt-6" /> : null}
+
+      <div className={loading ? "sr-only" : "mt-6 grid gap-6 lg:grid-cols-[1fr_320px]"}>
         <div className="overflow-x-auto border-y border-border">
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead>
